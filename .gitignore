@@ -1,0 +1,21 @@
+# ---- Backend (Java / Maven) ----
+backend/target/
+backend/.mvn/
+backend/*.iml
+backend/.idea/
+*.class
+
+# Credenciales reales - NUNCA subir esto
+backend/src/main/resources/application.properties
+backend/src/main/resources/application-local.properties
+
+# ---- Frontend (React / Node) ----
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+
+# ---- General ----
+.DS_Store
+*.log
+.vscode/
