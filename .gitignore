@@ -1,12 +1,13 @@
 # ---- Backend (Java / Maven) ----
 backend/target/
-backend/.mvn/
+backend/.mvn/wrapper/maven-wrapper.jar
 backend/*.iml
 backend/.idea/
 *.class
 
 # Credenciales reales - NUNCA subir esto
-backend/src/main/resources/application.properties
+.env
+backend/.env
 backend/src/main/resources/application-local.properties
 
 # ---- Frontend (React / Node) ----
@@ -19,3 +20,7 @@ frontend/.env
 .DS_Store
 *.log
 .vscode/
+
+
+# Credenciales del backend antiguo (no subir)
+application.properties.ANTIGUO
