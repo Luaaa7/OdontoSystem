@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: odontosystem
+  datasource:
+    url: jdbc:postgresql://aws-0-sa-east-1.pooler.supabase.com:5432/postgres
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
+        format_sql: true
+    show-sql: false
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+server:
+  port: 8080
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-minutes: 15
+    refresh-token-days: 30
+  google:
+    client-id: ${GOOGLE_CLIENT_ID}
