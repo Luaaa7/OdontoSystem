@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.OffsetDateTime;
 import java.util.stream.Collectors;
@@ -43,6 +44,12 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .collect(Collectors.joining("; "));
         return construirRespuesta(HttpStatus.BAD_REQUEST, mensaje, request);
+    }
+
+    // Ruta que no existe: 404 (antes caia en el manejador general y respondia 500).
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> manejarRutaInexistente(NoResourceFoundException ex, HttpServletRequest request) {
+        return construirRespuesta(HttpStatus.NOT_FOUND, "Recurso no encontrado", request);
     }
 
     @ExceptionHandler(Exception.class)
