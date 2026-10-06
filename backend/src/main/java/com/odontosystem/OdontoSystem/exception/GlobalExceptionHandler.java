@@ -3,6 +3,8 @@ package com.odontosystem.OdontoSystem.exception;
 import com.odontosystem.OdontoSystem.dto.ErrorResponse;
 import com.odontosystem.OdontoSystem.security.TokenInvalidoException;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -16,6 +18,8 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(TokenInvalidoException.class)
     public ResponseEntity<ErrorResponse> manejarTokenInvalido(TokenInvalidoException ex, HttpServletRequest request) {
@@ -43,6 +47,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> manejarExcepcionGeneral(Exception ex, HttpServletRequest request) {
+        // Al cliente no se le muestran detalles internos, pero el error completo queda en los logs
+        // (en Railway: Deploy Logs). Sin esta linea los errores 500 no dejaban ningun rastro.
+        log.error("Error inesperado en {} {}", request.getMethod(), request.getRequestURI(), ex);
         return construirRespuesta(HttpStatus.INTERNAL_SERVER_ERROR, "Ocurrió un error inesperado", request);
     }
 
