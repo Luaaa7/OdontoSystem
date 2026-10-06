@@ -4,6 +4,7 @@ import com.odontosystem.OdontoSystem.security.JwtAuthenticationFilter;
 import com.odontosystem.OdontoSystem.security.UsuarioDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -59,12 +60,16 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                // 4. Permite el acceso a las rutas de autenticación, públicas, y al manejo de errores
+                // 4. CORS: deja que los frontends (web/app) llamen a la API desde el navegador.
+                //    Los orígenes permitidos se configuran en CorsConfig (propiedad app.cors.allowed-origins).
+                .cors(Customizer.withDefaults())
+                // 5. Permite el acceso a las rutas de autenticación, públicas, Swagger y al manejo de errores
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/public/**", "/error").permitAll()
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                // 5. Inserta el filtro JWT antes del filtro estándar de autenticación por formulario
+                // 6. Inserta el filtro JWT antes del filtro estándar de autenticación por formulario
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
