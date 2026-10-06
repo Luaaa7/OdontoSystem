@@ -200,6 +200,9 @@ public class AuthService {
         return new AuthResponse(accessToken, refreshToken, principal.getUsuario().getRol().name(), principal.getUsuario().getNombreCompleto());
     }
 
+    // @Transactional: el Usuario del token se carga de forma perezosa (LAZY). Sin una transacción
+    // abierta aquí, leer usuario.getCorreo() lanza LazyInitializationException (open-in-view=false).
+    @Transactional
     public AuthResponse refrescar(String refreshTokenEntrante, HttpServletRequest httpRequest) {
         TokenRefrescoService.ResultadoRotacion resultado = tokenRefrescoService.rotar(refreshTokenEntrante, httpRequest);
 
