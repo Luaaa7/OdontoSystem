@@ -2,11 +2,14 @@ package com.odontosystem.OdontoSystem.chatbot;
 
 import com.odontosystem.OdontoSystem.entity.CanalChat;
 import com.odontosystem.OdontoSystem.entity.EstadoChat;
+import com.odontosystem.OdontoSystem.entity.EstadoVerificacionOdontologo;
 import com.odontosystem.OdontoSystem.entity.MensajeChat;
+import com.odontosystem.OdontoSystem.entity.PerfilOdontologo;
 import com.odontosystem.OdontoSystem.entity.SesionChat;
 import com.odontosystem.OdontoSystem.entity.TipoEmisorMensaje;
 import com.odontosystem.OdontoSystem.entity.Usuario;
 import com.odontosystem.OdontoSystem.repository.MensajeChatRepository;
+import com.odontosystem.OdontoSystem.repository.PerfilOdontologoRepository;
 import com.odontosystem.OdontoSystem.repository.SesionChatRepository;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +45,7 @@ class ChatbotServiceTest {
     @Mock private SesionChatRepository sesionChatRepository;
     @Mock private MensajeChatRepository mensajeChatRepository;
     @Mock private UsuarioRepository usuarioRepository;
+    @Mock private PerfilOdontologoRepository perfilOdontologoRepository;
 
     private ChatbotService servicio;
     private Usuario paciente;
@@ -48,7 +53,8 @@ class ChatbotServiceTest {
     @BeforeEach
     void setUp() {
         // El detector es real: así también probamos que la intención llega bien al servicio.
-        servicio = new ChatbotService(new IntentDetector(), sesionChatRepository, mensajeChatRepository, usuarioRepository);
+        servicio = new ChatbotService(new IntentDetector(), new DistritoExtractor(),
+                sesionChatRepository, mensajeChatRepository, usuarioRepository, perfilOdontologoRepository);
         paciente = Usuario.builder().id(UUID.randomUUID()).nombreCompleto("Paciente Prueba").build();
     }
 
@@ -176,5 +182,108 @@ class ChatbotServiceTest {
         assertThat(historial).extracting(MensajeChatResponse::emisor)
                 .containsExactly(TipoEmisorMensaje.USUARIO, TipoEmisorMensaje.BOT);
         assertThat(historial.get(0).texto()).isEqualTo("hola");
+    }
+
+    // ------------------------------------------------------------------ Fase 3a: distrito y contexto
+
+    private PerfilOdontologo odontologo(String nombre, String distrito, String calificacion) {
+        Usuario usuario = Usuario.builder().id(UUID.randomUUID()).nombreCompleto(nombre).build();
+        return PerfilOdontologo.builder()
+                .usuarioId(usuario.getId())
+                .usuario(usuario)
+                .numeroColegiatura("COP-" + nombre.hashCode())
+                .nombreConsultorio("Consultorio " + nombre)
+                .distritoConsultorio(distrito)
+                .calificacionPromedio(new BigDecimal(calificacion))
+                .estadoVerificacion(EstadoVerificacionOdontologo.VERIFICADO)
+                .build();
+    }
+
+    private void conSesionActiva() {
+        when(sesionChatRepository.findFirstByUsuarioIdAndEstadoOrderByActualizadoEnDesc(paciente.getId(), EstadoChat.ACTIVA))
+                .thenReturn(Optional.of(sesionDe(paciente)));
+    }
+
+    private void conOdontologosVerificados(PerfilOdontologo... perfiles) {
+        when(perfilOdontologoRepository.findByDesactivadoEnIsNullAndEstadoVerificacionAndDistritoConsultorioIsNotNull(
+                EstadoVerificacionOdontologo.VERIFICADO)).thenReturn(List.of(perfiles));
+    }
+
+    @Test
+    @DisplayName("Si el mensaje trae el distrito, busca directo y devuelve solo los de ese distrito")
+    void buscaConDistritoEnElMensaje() {
+        conSesionActiva();
+        conOdontologosVerificados(
+                odontologo("Ana Perez", "Parcona", "4.50"),
+                odontologo("Luis Gomez", "La Tinguiña", "4.90"));
+
+        RespuestaChatbot respuesta = servicio.procesarMensaje(paciente.getId(), mensaje("busco un dentista en Parcona"));
+
+        assertThat(respuesta.tipo()).isEqualTo(RespuestaChatbot.LISTA_ODONTOLOGOS);
+        assertThat(respuesta.mensaje()).isEqualTo("Encontré 1 odontólogo en Parcona:");
+        assertThat(respuesta.acciones()).containsExactly("ver_disponibilidad");
+        @SuppressWarnings("unchecked")
+        List<OdontologoResumen> datos = (List<OdontologoResumen>) respuesta.datos();
+        assertThat(datos).extracting(OdontologoResumen::nombre).containsExactly("Ana Perez");
+    }
+
+    @Test
+    @DisplayName("Los resultados salen ordenados por calificación, la mejor primero")
+    void ordenaPorCalificacion() {
+        conSesionActiva();
+        conOdontologosVerificados(
+                odontologo("Regular", "parcona", "3.20"),
+                odontologo("Excelente", "PARCONA", "4.80"));
+
+        RespuestaChatbot respuesta = servicio.procesarMensaje(paciente.getId(), mensaje("dentistas en parcona"));
+
+        @SuppressWarnings("unchecked")
+        List<OdontologoResumen> datos = (List<OdontologoResumen>) respuesta.datos();
+        assertThat(datos).extracting(OdontologoResumen::nombre).containsExactly("Excelente", "Regular");
+    }
+
+    @Test
+    @DisplayName("Sin odontólogos en el distrito, lo dice y ofrece buscar en otro")
+    void sinResultadosEnElDistrito() {
+        conSesionActiva();
+        conOdontologosVerificados(odontologo("Luis Gomez", "La Tinguiña", "4.90"));
+
+        RespuestaChatbot respuesta = servicio.procesarMensaje(paciente.getId(), mensaje("busco odontólogo en Subtanjalla"));
+
+        assertThat(respuesta.tipo()).isEqualTo(RespuestaChatbot.TEXTO_SIMPLE);
+        assertThat(respuesta.mensaje()).contains("Subtanjalla");
+        assertThat(respuesta.acciones()).containsExactly("elegir_distrito");
+    }
+
+    @Test
+    @DisplayName("Memoria de contexto: si el bot preguntó el distrito, \"Parcona\" se entiende como respuesta")
+    void recuerdaQueElBotPreguntoElDistrito() {
+        SesionChat sesion = sesionDe(paciente);
+        when(sesionChatRepository.findFirstByUsuarioIdAndEstadoOrderByActualizadoEnDesc(paciente.getId(), EstadoChat.ACTIVA))
+                .thenReturn(Optional.of(sesion));
+        when(mensajeChatRepository.findFirstBySesionIdAndTipoEmisorOrderByCreadoEnDesc(sesion.getId(), TipoEmisorMensaje.BOT))
+                .thenReturn(Optional.of(MensajeChat.builder()
+                        .tipoEmisor(TipoEmisorMensaje.BOT)
+                        .textoMensaje("¿En qué distrito de Ica te gustaría atenderte?")
+                        .intencionDetectada("BUSCAR_ODONTOLOGO")
+                        .build()));
+        conOdontologosVerificados(odontologo("Ana Perez", "Parcona", "4.50"));
+
+        RespuestaChatbot respuesta = servicio.procesarMensaje(paciente.getId(), mensaje("Parcona"));
+
+        assertThat(respuesta.intencion()).isEqualTo("BUSCAR_ODONTOLOGO");
+        assertThat(respuesta.tipo()).isEqualTo(RespuestaChatbot.LISTA_ODONTOLOGOS);
+    }
+
+    @Test
+    @DisplayName("Sin contexto previo, un distrito suelto no se adivina: muestra el menú")
+    void distritoSueltoSinContexto() {
+        conSesionActiva();
+
+        RespuestaChatbot respuesta = servicio.procesarMensaje(paciente.getId(), mensaje("Parcona"));
+
+        assertThat(respuesta.intencion()).isEqualTo("DESCONOCIDA");
+        verify(perfilOdontologoRepository, never())
+                .findByDesactivadoEnIsNullAndEstadoVerificacionAndDistritoConsultorioIsNotNull(any());
     }
 }

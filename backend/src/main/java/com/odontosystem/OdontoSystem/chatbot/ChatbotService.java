@@ -2,10 +2,13 @@ package com.odontosystem.OdontoSystem.chatbot;
 
 import com.odontosystem.OdontoSystem.entity.CanalChat;
 import com.odontosystem.OdontoSystem.entity.EstadoChat;
+import com.odontosystem.OdontoSystem.entity.EstadoVerificacionOdontologo;
 import com.odontosystem.OdontoSystem.entity.MensajeChat;
+import com.odontosystem.OdontoSystem.entity.PerfilOdontologo;
 import com.odontosystem.OdontoSystem.entity.SesionChat;
 import com.odontosystem.OdontoSystem.entity.TipoEmisorMensaje;
 import com.odontosystem.OdontoSystem.repository.MensajeChatRepository;
+import com.odontosystem.OdontoSystem.repository.PerfilOdontologoRepository;
 import com.odontosystem.OdontoSystem.repository.SesionChatRepository;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,36 +17,60 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Orquesta una vuelta de conversación:
- * mensaje del usuario -> detectar intención -> guardar -> generar respuesta -> guardar -> responder.
+ * mensaje -> intención + distrito -> memoria de contexto -> guardar -> responder -> guardar.
  *
- * Fase 2: las respuestas son guiadas pero todavía no consultan odontólogos ni citas.
- * Fase 3: BUSCAR_ODONTOLOGO, AGENDAR_CITA y CONSULTAR_HISTORIAL usarán datos reales y la
- * memoria de contexto (lo último que preguntó el bot en la sesión).
+ * Memoria de contexto: si el bot acaba de preguntar por un distrito (su último mensaje fue de
+ * BUSCAR_ODONTOLOGO o AGENDAR_CITA) y el usuario responde solo "Parcona", el mensaje no tiene
+ * intención propia, pero se entiende como la respuesta a esa pregunta.
+ *
+ * Pendiente (Fase 3b): CONSULTAR_HISTORIAL con citas reales y AGENDAR_CITA con disponibilidad,
+ * cuando exista la entidad Cita (módulo de citas).
  */
 @Service
 @RequiredArgsConstructor
 public class ChatbotService {
 
     static final List<String> ACCIONES_MENU = List.of("buscar_odontologo", "agendar_cita", "ver_historial");
+    static final int MAX_RESULTADOS = 5;
+
+    /** Intenciones del bot que terminan preguntando "¿en qué distrito?". */
+    private static final Set<String> INTENCIONES_QUE_PIDEN_DISTRITO =
+            Set.of(Intencion.BUSCAR_ODONTOLOGO.name(), Intencion.AGENDAR_CITA.name());
 
     private final IntentDetector intentDetector;
+    private final DistritoExtractor distritoExtractor;
     private final SesionChatRepository sesionChatRepository;
     private final MensajeChatRepository mensajeChatRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PerfilOdontologoRepository perfilOdontologoRepository;
 
     @Transactional
     public RespuestaChatbot procesarMensaje(UUID usuarioId, MensajeChatRequest request) {
         SesionChat sesion = obtenerOCrearSesion(usuarioId, request);
+
+        // Se lee ANTES de guardar el mensaje nuevo: es lo último que dijo el bot.
+        Optional<String> ultimaIntencionDelBot = ultimaIntencionDelBot(sesion);
+
         Intencion intencion = intentDetector.detectar(request.mensaje());
+        Optional<String> distrito = distritoExtractor.extraer(request.mensaje());
+
+        if (intencion == Intencion.DESCONOCIDA && distrito.isPresent()
+                && ultimaIntencionDelBot.filter(INTENCIONES_QUE_PIDEN_DISTRITO::contains).isPresent()) {
+            intencion = Intencion.BUSCAR_ODONTOLOGO; // "Parcona" responde a "¿en qué distrito?"
+        }
 
         guardarMensaje(sesion, TipoEmisorMensaje.USUARIO, request.mensaje(), intencion);
-        RespuestaChatbot respuesta = generarRespuesta(sesion, intencion);
+        RespuestaChatbot respuesta = generarRespuesta(sesion, intencion, distrito);
         guardarMensaje(sesion, TipoEmisorMensaje.BOT, respuesta.mensaje(), intencion);
 
         sesion.setActualizadoEn(OffsetDateTime.now()); // la sesión pasa a ser la más reciente
@@ -92,6 +119,12 @@ public class ChatbotService {
         return sesionChatRepository.save(nueva);
     }
 
+    private Optional<String> ultimaIntencionDelBot(SesionChat sesion) {
+        return mensajeChatRepository
+                .findFirstBySesionIdAndTipoEmisorOrderByCreadoEnDesc(sesion.getId(), TipoEmisorMensaje.BOT)
+                .map(MensajeChat::getIntencionDetectada);
+    }
+
     private void guardarMensaje(SesionChat sesion, TipoEmisorMensaje emisor, String texto, Intencion intencion) {
         mensajeChatRepository.save(MensajeChat.builder()
                 .sesion(sesion)
@@ -103,20 +136,16 @@ public class ChatbotService {
 
     // ------------------------------------------------------------------ respuestas
 
-    private RespuestaChatbot generarRespuesta(SesionChat sesion, Intencion intencion) {
+    private RespuestaChatbot generarRespuesta(SesionChat sesion, Intencion intencion, Optional<String> distrito) {
         return switch (intencion) {
             case SALUDO -> texto(sesion, intencion,
                     "¡Hola, " + primerNombre(sesion) + "! Soy el asistente de OdontoSystem. "
                             + "Puedo ayudarte a buscar un odontólogo, agendar una cita o revisar tus citas.",
                     ACCIONES_MENU);
-            case BUSCAR_ODONTOLOGO -> texto(sesion, intencion,
-                    "¿En qué distrito de Ica te gustaría atenderte? "
-                            + "Por ejemplo: Ica Centro, Parcona, La Tinguiña o Subtanjalla.",
-                    List.of("elegir_distrito"));
-            case AGENDAR_CITA -> texto(sesion, intencion,
-                    "Para agendar, primero elige un odontólogo. ¿En qué distrito lo buscamos?",
-                    List.of("elegir_distrito"));
-            // TODO Fase 3: consultar la última y la próxima cita del paciente.
+            case BUSCAR_ODONTOLOGO, AGENDAR_CITA -> distrito
+                    .map(d -> buscarEnDistrito(sesion, intencion, d))
+                    .orElseGet(() -> preguntarDistrito(sesion, intencion));
+            // TODO Fase 3b: consultar la última y la próxima cita del paciente.
             case CONSULTAR_HISTORIAL -> texto(sesion, intencion,
                     "Pronto podrás revisar tus citas desde aquí. Mientras tanto, ¿quieres buscar un odontólogo?",
                     List.of("buscar_odontologo"));
@@ -127,6 +156,43 @@ public class ChatbotService {
                             + "🕐 Ver tu historial de citas",
                     ACCIONES_MENU);
         };
+    }
+
+    private RespuestaChatbot preguntarDistrito(SesionChat sesion, Intencion intencion) {
+        String mensaje = intencion == Intencion.AGENDAR_CITA
+                ? "Para agendar, primero elige un odontólogo. ¿En qué distrito lo buscamos?"
+                : "¿En qué distrito de Ica te gustaría atenderte? "
+                  + "Por ejemplo: Ica Centro, Parcona, La Tinguiña o Subtanjalla.";
+        return texto(sesion, intencion, mensaje, List.of("elegir_distrito"));
+    }
+
+    /**
+     * Odontólogos verificados y activos del distrito, mejor calificados primero.
+     * El distrito del perfil es texto libre, por eso se compara normalizado en Java
+     * (con pocos odontólogos por provincia es suficiente; si crece, conviene una columna normalizada).
+     */
+    private RespuestaChatbot buscarEnDistrito(SesionChat sesion, Intencion intencion, String distrito) {
+        List<OdontologoResumen> encontrados = perfilOdontologoRepository
+                .findByDesactivadoEnIsNullAndEstadoVerificacionAndDistritoConsultorioIsNotNull(
+                        EstadoVerificacionOdontologo.VERIFICADO)
+                .stream()
+                .filter(perfil -> distritoExtractor.coincide(perfil.getDistritoConsultorio(), distrito))
+                .sorted(Comparator.comparing(PerfilOdontologo::getCalificacionPromedio,
+                        Comparator.nullsLast(Comparator.<BigDecimal>reverseOrder())))
+                .limit(MAX_RESULTADOS)
+                .map(OdontologoResumen::desde)
+                .toList();
+
+        if (encontrados.isEmpty()) {
+            return texto(sesion, intencion,
+                    "Todavía no tengo odontólogos verificados en " + distrito + ". ¿Quieres buscar en otro distrito?",
+                    List.of("elegir_distrito"));
+        }
+        String mensaje = encontrados.size() == 1
+                ? "Encontré 1 odontólogo en " + distrito + ":"
+                : "Encontré " + encontrados.size() + " odontólogos en " + distrito + ":";
+        return new RespuestaChatbot(sesion.getId(), RespuestaChatbot.LISTA_ODONTOLOGOS, mensaje,
+                intencion.name(), encontrados, List.of("ver_disponibilidad"));
     }
 
     private static RespuestaChatbot texto(SesionChat sesion, Intencion intencion, String mensaje, List<String> acciones) {
