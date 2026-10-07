@@ -9,8 +9,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -50,6 +55,34 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> manejarRutaInexistente(NoResourceFoundException ex, HttpServletRequest request) {
         return construirRespuesta(HttpStatus.NOT_FOUND, "Recurso no encontrado", request);
+    }
+
+    // ---- Subida de archivos (multipart) ----
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> manejarArchivoGrande(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        return construirRespuesta(HttpStatus.CONTENT_TOO_LARGE, "El archivo supera el tamaño máximo de 5 MB", request);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ErrorResponse> manejarFaltaArchivo(MissingServletRequestPartException ex, HttpServletRequest request) {
+        return construirRespuesta(HttpStatus.BAD_REQUEST, "Falta el campo '" + ex.getRequestPartName() + "'", request);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> manejarFaltaParametro(MissingServletRequestParameterException ex, HttpServletRequest request) {
+        return construirRespuesta(HttpStatus.BAD_REQUEST, "Falta el parámetro '" + ex.getParameterName() + "'", request);
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ErrorResponse> manejarMultipart(MultipartException ex, HttpServletRequest request) {
+        return construirRespuesta(HttpStatus.BAD_REQUEST, "La petición debe enviarse como multipart/form-data", request);
+    }
+
+    // Ej.: tipo=PASAPORTE en un enum, o un UUID mal escrito en la ruta
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> manejarTipoInvalido(MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        return construirRespuesta(HttpStatus.BAD_REQUEST, "Valor inválido para '" + ex.getName() + "'", request);
     }
 
     @ExceptionHandler(Exception.class)

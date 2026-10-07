@@ -67,6 +67,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/public/**", "/error").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        // Documentos y fotos del consultorio: solo odontólogos
+                        .requestMatchers("/api/odontologos/yo/**").hasRole("ODONTOLOGO")
                         .anyRequest().authenticated()
                 )
                 // 6. Inserta el filtro JWT antes del filtro estándar de autenticación por formulario
