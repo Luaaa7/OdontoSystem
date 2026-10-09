@@ -1,5 +1,6 @@
 package com.odontosystem.OdontoSystem.odontologos;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.odontosystem.OdontoSystem.odontologos.OdontologoDtos.FiltroBusqueda;
 import com.odontosystem.OdontoSystem.odontologos.OdontologoDtos.OdontologoTarjeta;
 import com.odontosystem.OdontoSystem.odontologos.OdontologoDtos.Pagina;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /** Buscador y perfil público. No requieren login: un paciente puede explorar antes de registrarse. */
+@SecurityRequirements // público: Swagger no muestra candado
 @Tag(name = "Odontólogos", description = "Buscador y perfil público (sin login)")
 @RestController
 @RequestMapping("/api/odontologos")

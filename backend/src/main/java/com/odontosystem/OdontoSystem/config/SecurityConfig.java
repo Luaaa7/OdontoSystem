@@ -78,7 +78,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/odontologos", "/api/odontologos/*",
                                 "/api/odontologos/*/disponibilidad", "/api/catalogos/**").permitAll()
                         // Solo un paciente reserva
-                        .requestMatchers(HttpMethod.POST, "/api/citas").hasRole("PACIENTE")
+                        .requestMatchers(HttpMethod.POST, "/api/citas", "/api/citas/*/pagar").hasRole("PACIENTE")
+                        // Railway consulta este endpoint para saber si la app está viva
+                        .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()
                 )
                 // 401 sin token o con token vencido; 403 si el rol no alcanza (ambos en JSON)

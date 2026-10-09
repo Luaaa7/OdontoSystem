@@ -247,7 +247,7 @@ public class CitaService {
 
     // ------------------------------------------------------------------
 
-    private CitaResponse cambiarEstado(Cita cita, UUID actorId, EstadoCita nuevo, String motivo) {
+    CitaResponse cambiarEstado(Cita cita, UUID actorId, EstadoCita nuevo, String motivo) {
         fijarActor(actorId);
         cita.setEstado(nuevo);
         if (nuevo == EstadoCita.CANCELADA_CON_REEMBOLSO || nuevo == EstadoCita.CANCELADA_SIN_REEMBOLSO) {

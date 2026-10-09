@@ -59,6 +59,8 @@ public class BusquedaOdontologosService {
         String q = Texto.normalizar(filtro.q());
 
         List<OdontologoTarjeta> resultados = perfiles.stream()
+                // Sin servicios activos no hay nada que reservar: el perfil no se muestra hasta que lo complete
+                .filter(p -> !serviciosPorOdontologo.getOrDefault(p.getUsuarioId(), List.of()).isEmpty())
                 .filter(p -> distrito.isEmpty() || distrito.equals(Texto.normalizar(p.getDistritoConsultorio())))
                 .filter(p -> filtro.especialidadId() == null || p.getEspecialidades().stream()
                         .anyMatch(e -> e.getId().equals(filtro.especialidadId())))

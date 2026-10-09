@@ -125,6 +125,12 @@
             <version>3.0.0</version>
         </dependency>
 
+        <!-- /actuator/health: Railway lo consulta para saber si la app está viva -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Cloudinary: fotos de perfil, documentos y fotos del consultorio -->
         <dependency>
             <groupId>com.cloudinary</groupId>

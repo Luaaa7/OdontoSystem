@@ -71,11 +71,11 @@ class BusquedaOdontologosServiceTest {
     }
 
     @Test
-    @DisplayName("Sin filtros: todos, ordenados por calificación")
+    @DisplayName("Sin filtros: ordenados por calificación; el que no tiene servicios no aparece")
     void sinFiltros() {
         var r = servicio.buscar(filtro(null, null, null, null, null, null, null, null));
-        assertThat(nombres(r)).containsExactly("Marco Ríos", "Rosa Díaz", "Ana Torres", "Luis Pérez");
-        assertThat(r.totalElementos()).isEqualTo(4);
+        assertThat(nombres(r)).containsExactly("Rosa Díaz", "Ana Torres", "Luis Pérez");
+        assertThat(r.totalElementos()).isEqualTo(3);
     }
 
     @Test
@@ -114,15 +114,14 @@ class BusquedaOdontologosServiceTest {
     @DisplayName("Precio desde = el servicio activo más barato; orden por precio")
     void precioDesde() {
         var r = servicio.buscar(filtro(null, null, null, null, null, null, null, "precio"));
-        assertThat(nombres(r).subList(0, 3)).containsExactly("Luis Pérez", "Ana Torres", "Rosa Díaz");
+        assertThat(nombres(r)).containsExactly("Luis Pérez", "Ana Torres", "Rosa Díaz");
         assertThat(r.contenido().get(1).precioDesde()).isEqualByComparingTo("80.00");
-        assertThat(r.contenido().get(3).precioDesde()).isNull(); // Marco no tiene servicios
     }
 
     @Test
     @DisplayName("Paginación")
     void paginacion() {
-        var r = servicio.buscar(new FiltroBusqueda(null, null, null, null, null, null, null, null, 1, 3));
+        var r = servicio.buscar(new FiltroBusqueda(null, null, null, null, null, null, null, null, 1, 2));
         assertThat(r.contenido()).hasSize(1);
         assertThat(r.totalPaginas()).isEqualTo(2);
     }

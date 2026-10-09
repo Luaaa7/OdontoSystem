@@ -1,5 +1,6 @@
 package com.odontosystem.OdontoSystem.controller;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.odontosystem.OdontoSystem.dto.AuthResponse;
 import com.odontosystem.OdontoSystem.dto.LoginRequest;
 import com.odontosystem.OdontoSystem.dto.RefreshRequest;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@SecurityRequirements // público: Swagger no muestra candado
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {

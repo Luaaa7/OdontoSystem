@@ -1,5 +1,6 @@
 package com.odontosystem.OdontoSystem.odontologos;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.odontosystem.OdontoSystem.entity.EstadoVerificacionOdontologo;
 import com.odontosystem.OdontoSystem.entity.PerfilOdontologo;
 import com.odontosystem.OdontoSystem.odontologos.OdontologoDtos.ItemCatalogo;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Objects;
 
 /** Listas para los filtros y formularios de los frontends. Públicas. */
+@SecurityRequirements // público: Swagger no muestra candado
 @Tag(name = "Catálogos", description = "Especialidades, categorías de servicio y distritos con odontólogos")
 @RestController
 @RequestMapping("/api/catalogos")
