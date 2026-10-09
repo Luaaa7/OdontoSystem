@@ -41,6 +41,12 @@ public class SesionChat {
     @Builder.Default
     private EstadoChat estado = EstadoChat.ACTIVA;
 
+    /** Memoria de contexto del chatbot (ver chatbot.ContextoChat). JSON; "{}" = sin flujo en curso. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "contexto", nullable = false, columnDefinition = "jsonb")
+    @Builder.Default
+    private String contexto = "{}";
+
     @Column(name = "creado_en", nullable = false, updatable = false)
     private OffsetDateTime creadoEn;
 
