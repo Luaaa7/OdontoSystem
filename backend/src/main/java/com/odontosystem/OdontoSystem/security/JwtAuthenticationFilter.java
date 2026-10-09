@@ -40,7 +40,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         final String jwt = authHeader.substring(7);
-        final String correo = jwtService.extractCorreo(jwt);
+        final String correo;
+        try {
+            correo = jwtService.extractCorreo(jwt);
+        } catch (RuntimeException e) {
+            // Token vencido, mal formado o con firma inválida: se sigue sin autenticar y,
+            // si la ruta lo exige, RespuestasSeguridad responde 401 (antes salía un 500).
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         if (correo != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             usuarioRepository.findByCorreo(correo).ifPresent(usuario -> {

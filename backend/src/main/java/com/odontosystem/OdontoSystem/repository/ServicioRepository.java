@@ -8,4 +8,10 @@ import java.util.UUID;
 
 public interface ServicioRepository extends JpaRepository<Servicio, UUID> {
     List<Servicio> findByOdontologo_UsuarioIdAndEstaActivoTrue(UUID odontologoId);
+
+    List<Servicio> findByOdontologo_UsuarioIdInAndEstaActivoTrue(java.util.Collection<UUID> odontologoIds);
+
+    List<Servicio> findByOdontologo_UsuarioIdOrderByCreadoEnAsc(UUID odontologoId);
+
+    java.util.Optional<Servicio> findByIdAndOdontologo_UsuarioId(UUID id, UUID odontologoId);
 }

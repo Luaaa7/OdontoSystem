@@ -1,9 +1,11 @@
 package com.odontosystem.OdontoSystem.config;
 
 import com.odontosystem.OdontoSystem.security.JwtAuthenticationFilter;
+import com.odontosystem.OdontoSystem.security.RespuestasSeguridad;
 import com.odontosystem.OdontoSystem.security.UsuarioDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -25,10 +27,13 @@ public class SecurityConfig {
 
     private final UsuarioDetailsService usuarioDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RespuestasSeguridad respuestasSeguridad;
 
-    public SecurityConfig(UsuarioDetailsService usuarioDetailsService, JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(UsuarioDetailsService usuarioDetailsService, JwtAuthenticationFilter jwtAuthenticationFilter,
+                          RespuestasSeguridad respuestasSeguridad) {
         this.usuarioDetailsService = usuarioDetailsService;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.respuestasSeguridad = respuestasSeguridad;
     }
 
     @Bean
@@ -69,7 +74,17 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // Documentos y fotos del consultorio: solo odontólogos
                         .requestMatchers("/api/odontologos/yo/**").hasRole("ODONTOLOGO")
+                        // Buscador, perfil público y catálogos: sin login (el paciente explora antes de registrarse)
+                        .requestMatchers(HttpMethod.GET, "/api/odontologos", "/api/odontologos/*",
+                                "/api/odontologos/*/disponibilidad", "/api/catalogos/**").permitAll()
+                        // Solo un paciente reserva
+                        .requestMatchers(HttpMethod.POST, "/api/citas").hasRole("PACIENTE")
                         .anyRequest().authenticated()
+                )
+                // 401 sin token o con token vencido; 403 si el rol no alcanza (ambos en JSON)
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint(respuestasSeguridad)
+                        .accessDeniedHandler(respuestasSeguridad)
                 )
                 // 6. Inserta el filtro JWT antes del filtro estándar de autenticación por formulario
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

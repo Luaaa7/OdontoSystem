@@ -5,6 +5,7 @@ import com.odontosystem.OdontoSystem.security.TokenInvalidoException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -55,6 +56,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> manejarRutaInexistente(NoResourceFoundException ex, HttpServletRequest request) {
         return construirRespuesta(HttpStatus.NOT_FOUND, "Recurso no encontrado", request);
+    }
+
+    // Restricción de la BD (dato duplicado, cita que se cruza, regla de un trigger): 409 en lugar de 500
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> manejarConflictoDatos(DataIntegrityViolationException ex, HttpServletRequest request) {
+        log.warn("Conflicto de datos en {} {}: {}", request.getMethod(), request.getRequestURI(),
+                ex.getMostSpecificCause().getMessage());
+        return construirRespuesta(HttpStatus.CONFLICT, "La operación entra en conflicto con datos existentes", request);
     }
 
     // ---- Subida de archivos (multipart) ----

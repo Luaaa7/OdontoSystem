@@ -11,6 +11,8 @@ import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -110,6 +112,13 @@ public class PerfilOdontologo {
 
     @Column(name = "nota_observacion", columnDefinition = "TEXT")
     private String notaObservacion;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "especialidades_odontologo",
+            joinColumns = @JoinColumn(name = "odontologo_id"),
+            inverseJoinColumns = @JoinColumn(name = "especialidad_id"))
+    @Builder.Default
+    private Set<Especialidad> especialidades = new HashSet<>();
 
     @PrePersist
     protected void alPersistir() {
