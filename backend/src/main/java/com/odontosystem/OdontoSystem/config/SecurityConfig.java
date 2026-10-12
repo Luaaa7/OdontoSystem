@@ -76,9 +76,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/odontologos/yo/**").hasRole("ODONTOLOGO")
                         // Buscador, perfil público y catálogos: sin login (el paciente explora antes de registrarse)
                         .requestMatchers(HttpMethod.GET, "/api/odontologos", "/api/odontologos/*",
-                                "/api/odontologos/*/disponibilidad", "/api/catalogos/**").permitAll()
+                                "/api/odontologos/*/disponibilidad", "/api/odontologos/*/resenas", "/api/catalogos/**").permitAll()
                         // Solo un paciente reserva
-                        .requestMatchers(HttpMethod.POST, "/api/citas", "/api/citas/*/pagar").hasRole("PACIENTE")
+                        .requestMatchers(HttpMethod.POST, "/api/citas", "/api/citas/*/pagar", "/api/citas/*/resena").hasRole("PACIENTE")
+                        // Reseñas: solo el paciente califica y ve sus citas por calificar
+                        .requestMatchers(HttpMethod.PATCH, "/api/citas/*/resena").hasRole("PACIENTE")
+                        .requestMatchers(HttpMethod.GET, "/api/citas/por-resenar").hasRole("PACIENTE")
                         // Railway consulta este endpoint para saber si la app está viva
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()

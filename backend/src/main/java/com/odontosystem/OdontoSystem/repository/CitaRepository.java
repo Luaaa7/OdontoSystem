@@ -45,6 +45,12 @@ public interface CitaRepository extends JpaRepository<Cita, UUID> {
             + "join fetch c.servicio where c.id = :id")
     Optional<Cita> conDetalle(@Param("id") UUID id);
 
+    /** Citas atendidas del paciente que todavía no tienen reseña, las más recientes primero. */
+    @Query("select c from Cita c join fetch c.odontologo o join fetch o.usuario join fetch c.servicio "
+            + "where c.paciente.id = :pacienteId and c.estado = com.odontosystem.OdontoSystem.entity.EstadoCita.COMPLETADA "
+            + "and not exists (select r.id from Resena r where r.cita = c) order by c.inicioProgramado desc")
+    List<Cita> completadasSinResena(@Param("pacienteId") UUID pacienteId);
+
     long countByPaciente_IdAndEstado(UUID pacienteId, EstadoCita estado);
 
     List<Cita> findByEstadoAndCreadoEnBefore(EstadoCita estado, OffsetDateTime limite);
