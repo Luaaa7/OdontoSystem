@@ -18,6 +18,7 @@ import com.odontosystem.OdontoSystem.repository.ReputacionPacienteRepository;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -60,6 +61,8 @@ public class CitaService {
     private final ParametrosSistema parametros;
     private final EntityManager entityManager;
     private final Clock clock;
+    /** Avisa los cambios de estado (correos al paciente, ver notificaciones.AvisosCitas). */
+    private final ApplicationEventPublisher eventos;
 
     // ------------------------------------------------------------------
     // Reservar
@@ -237,6 +240,7 @@ public class CitaService {
         OffsetDateTime limite = OffsetDateTime.now(clock).minus(PLAZO_PAGO);
         List<Cita> vencidas = citaRepository.findByEstadoAndCreadoEnBefore(EstadoCita.PENDIENTE_PAGO, limite);
         for (Cita cita : vencidas) {
+            eventos.publishEvent(new CitaCambioEstado(cita.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CANCELADA_SIN_REEMBOLSO));
             cita.setEstado(EstadoCita.CANCELADA_SIN_REEMBOLSO);
             cita.setCanceladoEn(OffsetDateTime.now(clock));
             cita.setMotivoCancelacion("No se pagó el depósito a tiempo");
@@ -249,12 +253,16 @@ public class CitaService {
 
     CitaResponse cambiarEstado(Cita cita, UUID actorId, EstadoCita nuevo, String motivo) {
         fijarActor(actorId);
+        EstadoCita anterior = cita.getEstado();
         cita.setEstado(nuevo);
         if (nuevo == EstadoCita.CANCELADA_CON_REEMBOLSO || nuevo == EstadoCita.CANCELADA_SIN_REEMBOLSO) {
             cita.setCanceladoEn(OffsetDateTime.now(clock));
         }
         if (motivo != null) cita.setMotivoCancelacion(motivo);
-        return aRespuesta(citaRepository.saveAndFlush(cita));
+        CitaResponse respuesta = aRespuesta(citaRepository.saveAndFlush(cita));
+        // Se entrega después del commit: si la transacción se deshace, no sale ningún correo
+        eventos.publishEvent(new CitaCambioEstado(cita.getId(), anterior, nuevo));
+        return respuesta;
     }
 
     /** La bitácora de la BD lee app.usuario_id para saber quién hizo el cambio (solo dura esta transacción). */

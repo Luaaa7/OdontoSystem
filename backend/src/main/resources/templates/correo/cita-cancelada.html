@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head><meta charset="UTF-8"><title>Cita cancelada</title></head>
+<body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f7;padding:24px 12px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr><td style="background:#0f766e;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:bold;">OdontoSystem</td></tr>
+      <tr><td style="padding:24px;">
+        <p style="font-size:18px;margin:0 0 12px;">Hola <span th:text="${paciente}">Ana</span>,</p>
+        <p th:if="${eraPendienteDePago}" style="margin:0 0 16px;line-height:1.5;">
+          Tu reserva de <strong th:text="${servicio}">Resina estética</strong> con
+          <span th:text="${odontologo}">Dra. Ana Torres</span> para el <strong th:text="${fecha}">lunes 12 de octubre</strong>
+          a las <strong th:text="${hora}">10:00</strong> se liberó.
+        </p>
+        <p th:unless="${eraPendienteDePago}" style="margin:0 0 16px;line-height:1.5;">
+          Tu cita de <strong th:text="${servicio}">Resina estética</strong> con
+          <span th:text="${odontologo}">Dra. Ana Torres</span> del <strong th:text="${fecha}">lunes 12 de octubre</strong>
+          a las <strong th:text="${hora}">10:00</strong> fue cancelada.
+        </p>
+        <p th:if="${motivo}" style="margin:0 0 16px;line-height:1.5;">Motivo: <span th:text="${motivo}">No se pagó el depósito a tiempo</span>.</p>
+        <p th:if="${conReembolso}" style="margin:0 0 16px;line-height:1.5;">
+          💵 Se te devolverá el depósito de <strong th:text="${deposito}">S/ 30.00</strong>.
+        </p>
+        <p th:if="${!conReembolso and !eraPendienteDePago}" style="margin:0 0 16px;line-height:1.5;color:#52606d;">
+          Como se canceló con menos de 12 horas de anticipación, el depósito no es reembolsable.
+        </p>
+        <p style="margin:0;line-height:1.5;">Puedes reservar otro turno cuando quieras desde la app o el chat de OdontoSystem.</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;color:#7b8794;font-size:12px;">
+        Este es un mensaje automático de OdontoSystem (Ica). No respondas a este correo.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

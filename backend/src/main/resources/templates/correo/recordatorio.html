@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head><meta charset="UTF-8"><title>Recordatorio de cita</title></head>
+<body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f7;padding:24px 12px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr><td style="background:#0f766e;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:bold;">OdontoSystem</td></tr>
+      <tr><td style="padding:24px;">
+        <p style="font-size:18px;margin:0 0 12px;">Hola <span th:text="${paciente}">Ana</span>,</p>
+        <p style="margin:0 0 16px;line-height:1.5;">
+          Te recordamos que <strong th:text="${cuando}">mañana</strong> tienes tu cita de
+          <strong th:text="${servicio}">Limpieza dental</strong>.
+        </p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdfa;border-radius:8px;">
+          <tr><td style="padding:16px;line-height:1.7;">
+            <div>📅 <strong th:text="${fecha}">lunes 12 de octubre</strong> a las <strong th:text="${hora}">10:00</strong></div>
+            <div>🦷 <span th:text="${odontologo}">Dra. Ana Torres</span></div>
+            <div th:if="${consultorio}">🏥 <span th:text="${consultorio}">Sonrisas</span></div>
+            <div th:if="${direccion}">📍 <span th:text="${direccion}">Av. Principal 123</span><span th:if="${distrito}" th:text="${', ' + distrito}">, Parcona</span></div>
+          </td></tr>
+        </table>
+        <p th:if="${enPocasHoras}" style="margin:16px 0 0;line-height:1.5;">Te sugerimos llegar 10 minutos antes.</p>
+        <p style="margin:16px 0 0;line-height:1.5;color:#52606d;font-size:14px;">
+          Si no vas a poder asistir, cancela la cita desde la app lo antes posible: así el turno queda libre
+          para otro paciente y evitas una penalidad por inasistencia.
+        </p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;color:#7b8794;font-size:12px;">
+        Este es un mensaje automático de OdontoSystem (Ica). No respondas a este correo.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

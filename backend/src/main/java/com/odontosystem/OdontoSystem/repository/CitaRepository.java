@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface CitaRepository extends JpaRepository<Cita, UUID> {
@@ -31,6 +32,18 @@ public interface CitaRepository extends JpaRepository<Cita, UUID> {
     List<Cita> agenda(@Param("odontologoId") UUID odontologoId,
                       @Param("desde") OffsetDateTime desde,
                       @Param("hasta") OffsetDateTime hasta);
+
+    /** Citas en ese estado que empiezan entre desde y hasta y todavía no tienen recordatorios programados. */
+    @Query("select c from Cita c where c.estado = :estado and c.inicioProgramado > :desde "
+            + "and c.inicioProgramado <= :hasta and not exists (select r.id from RecordatorioCita r where r.cita = c)")
+    List<Cita> sinRecordatorios(@Param("estado") EstadoCita estado,
+                                @Param("desde") OffsetDateTime desde,
+                                @Param("hasta") OffsetDateTime hasta);
+
+    /** La cita con paciente, odontólogo y servicio (para armar correos fuera de la transacción). */
+    @Query("select c from Cita c join fetch c.paciente join fetch c.odontologo o join fetch o.usuario "
+            + "join fetch c.servicio where c.id = :id")
+    Optional<Cita> conDetalle(@Param("id") UUID id);
 
     long countByPaciente_IdAndEstado(UUID pacienteId, EstadoCita estado);
 
