@@ -63,6 +63,7 @@ class CitaServiceTest {
     @Mock private ParametrosSistema parametros;
     @Mock(answer = Answers.RETURNS_DEEP_STUBS) private EntityManager entityManager;
     @Mock private org.springframework.context.ApplicationEventPublisher eventos;
+    @Mock private ReembolsoService reembolsos;
 
     private CitaService servicio;
     private Usuario paciente;
@@ -73,7 +74,7 @@ class CitaServiceTest {
     void setUp() {
         Clock reloj = Clock.fixed(Instant.parse("2026-10-19T13:00:00Z"), ZoneOffset.UTC);
         servicio = new CitaService(citaRepository, usuarioRepository, reputacionRepository, disponibilidadService,
-                bloqueoReservas, parametros, entityManager, reloj, eventos);
+                bloqueoReservas, parametros, entityManager, reloj, eventos, reembolsos);
         paciente = Usuario.builder().id(UUID.randomUUID()).nombreCompleto("Paciente").rol(RolUsuario.PACIENTE).build();
         UUID odontologoId = UUID.randomUUID();
         perfil = PerfilOdontologo.builder().usuarioId(odontologoId)
@@ -185,6 +186,13 @@ class CitaServiceTest {
         when(citaRepository.findById(hoy2.getId())).thenReturn(Optional.of(hoy2));
         assertThat(servicio.cancelar(perfil.getUsuarioId(), hoy2.getId(), null).estado())
                 .isEqualTo(EstadoCita.CANCELADA_CON_REEMBOLSO);
+
+        // RF15: solo las cancelaciones con reembolso devuelven el depósito
+        org.mockito.Mockito.verify(reembolsos).reembolsarDeposito(org.mockito.ArgumentMatchers.eq(manana.getId()),
+                org.mockito.ArgumentMatchers.eq("cancelacion:" + manana.getId()), org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.verify(reembolsos, org.mockito.Mockito.never()).reembolsarDeposito(
+                org.mockito.ArgumentMatchers.eq(hoy.getId()), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test

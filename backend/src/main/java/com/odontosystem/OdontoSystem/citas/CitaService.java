@@ -63,6 +63,8 @@ public class CitaService {
     private final Clock clock;
     /** Avisa los cambios de estado (correos al paciente, ver notificaciones.AvisosCitas). */
     private final ApplicationEventPublisher eventos;
+    /** RF15: devuelve el depósito cuando la cancelación lo da derecho. */
+    private final ReembolsoService reembolsos;
 
     // ------------------------------------------------------------------
     // Reservar
@@ -183,7 +185,11 @@ public class CitaService {
         String texto = motivo == null || motivo.isBlank()
                 ? (esOdontologo ? "Cancelada por el odontólogo" : "Cancelada por el paciente")
                 : motivo.trim();
-        return cambiarEstado(cita, usuarioId, nuevo, texto);
+        CitaResponse respuesta = cambiarEstado(cita, usuarioId, nuevo, texto);
+        if (nuevo == EstadoCita.CANCELADA_CON_REEMBOLSO) {
+            reembolsos.reembolsarDeposito(cita.getId(), "cancelacion:" + cita.getId(), texto);
+        }
+        return respuesta;
     }
 
     /** RF11: el odontólogo aprueba una reserva pagada que esperaba su confirmación. */

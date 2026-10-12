@@ -44,6 +44,11 @@ public class PasarelaSimulada {
         return new Cobro(idExterno, eventoId, payload, firmar(payload));
     }
 
+    /** Devuelve un cobro (simulado): responde con el número de operación del reembolso. */
+    public String reembolsar(UUID reembolsoId, BigDecimal monto) {
+        return "sim_rfd_" + UUID.randomUUID().toString().replace("-", "");
+    }
+
     /** Comparación en tiempo constante, para no filtrar información por el tiempo de respuesta. */
     public boolean firmaValida(String payload, String firma) {
         if (payload == null || firma == null) return false;
