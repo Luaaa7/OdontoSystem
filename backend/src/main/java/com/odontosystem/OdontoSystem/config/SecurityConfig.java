@@ -83,6 +83,9 @@ public class SecurityConfig {
                         // Reseñas: solo el paciente califica y ve sus citas por calificar
                         .requestMatchers(HttpMethod.PATCH, "/api/citas/*/resena").hasRole("PACIENTE")
                         .requestMatchers(HttpMethod.GET, "/api/citas/por-resenar").hasRole("PACIENTE")
+                        // Historia clínica: la escribe el odontólogo de la cita; el paciente ve todo su historial
+                        .requestMatchers(HttpMethod.POST, "/api/citas/*/historia").hasRole("ODONTOLOGO")
+                        .requestMatchers(HttpMethod.GET, "/api/historias/mias").hasRole("PACIENTE")
                         // Railway consulta este endpoint para saber si la app está viva
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()
