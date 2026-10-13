@@ -9,10 +9,13 @@ import com.odontosystem.OdontoSystem.repository.ReputacionPacienteRepository;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
 import com.odontosystem.OdontoSystem.repository.VerificacionCopRepository;
 import com.odontosystem.OdontoSystem.security.JwtService;
+import com.odontosystem.OdontoSystem.security.LimiteLoginService;
+import com.odontosystem.OdontoSystem.security.LoginBloqueadoException;
 import com.odontosystem.OdontoSystem.security.UsuarioPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -38,6 +41,7 @@ public class AuthService {
     private final ReputacionPacienteRepository reputacionPacienteRepository;
     private final VerificacionCopRepository verificacionCopRepository;
     private final ColegioOdontologicoVerificacionService verificacionCopService;
+    private final LimiteLoginService limiteLogin;
 
     public AuthService(
             UsuarioRepository usuarioRepository,
@@ -48,7 +52,8 @@ public class AuthService {
             PerfilOdontologoRepository perfilOdontologoRepository,
             ReputacionPacienteRepository reputacionPacienteRepository,
             VerificacionCopRepository verificacionCopRepository,
-            ColegioOdontologicoVerificacionService verificacionCopService
+            ColegioOdontologicoVerificacionService verificacionCopService,
+            LimiteLoginService limiteLogin
     ) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
@@ -59,6 +64,7 @@ public class AuthService {
         this.reputacionPacienteRepository = reputacionPacienteRepository;
         this.verificacionCopRepository = verificacionCopRepository;
         this.verificacionCopService = verificacionCopService;
+        this.limiteLogin = limiteLogin;
     }
 
     @Transactional
@@ -188,10 +194,32 @@ public class AuthService {
                 .collect(Collectors.toCollection(HashSet::new));
     }
 
+    /**
+     * Inicio de sesión con límite de intentos: 5 contraseñas incorrectas bloquean la cuenta 15 minutos
+     * y 20 fallos desde una misma IP bloquean esa IP (ver {@link LimiteLoginService}).
+     */
     public AuthResponse login(LoginRequest request, HttpServletRequest httpRequest) {
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.correo(), request.password())
-        );
+        String ip = httpRequest.getRemoteAddr();
+        limiteLogin.verificar(request.correo(), ip);
+
+        Authentication auth;
+        try {
+            auth = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.correo(), request.password())
+            );
+        } catch (BadCredentialsException e) {
+            int quedan = limiteLogin.registrarFallo(request.correo(), ip);
+            if (quedan == 0) {
+                throw new LoginBloqueadoException(limiteLogin.segundosDeBloqueo());
+            }
+            if (quedan > 0 && quedan <= 2) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Correo o contraseña incorrectos. Te "
+                        + (quedan == 1 ? "queda 1 intento" : "quedan " + quedan + " intentos")
+                        + " antes de que la cuenta se bloquee por unos minutos");
+            }
+            throw e;
+        }
+        limiteLogin.limpiar(request.correo());
 
         UsuarioPrincipal principal = (UsuarioPrincipal) auth.getPrincipal();
         String accessToken = jwtService.generateAccessToken(principal);

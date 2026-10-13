@@ -1,6 +1,7 @@
 package com.odontosystem.OdontoSystem.exception;
 
 import com.odontosystem.OdontoSystem.dto.ErrorResponse;
+import com.odontosystem.OdontoSystem.security.LoginBloqueadoException;
 import com.odontosystem.OdontoSystem.security.TokenInvalidoException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -36,6 +37,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorResponse> manejarCredencialesInvalidas(BadCredentialsException ex, HttpServletRequest request) {
         return construirRespuesta(HttpStatus.UNAUTHORIZED, "Correo o contraseña incorrectos", request);
+    }
+
+    // Demasiados intentos de login: 429 y Retry-After (segundos) para que el frontend muestre la espera
+    @ExceptionHandler(LoginBloqueadoException.class)
+    public ResponseEntity<ErrorResponse> manejarLoginBloqueado(LoginBloqueadoException ex, HttpServletRequest request) {
+        ResponseEntity<ErrorResponse> respuesta = construirRespuesta(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request);
+        return ResponseEntity.status(respuesta.getStatusCode())
+                .header("Retry-After", String.valueOf(ex.getSegundosRestantes()))
+                .body(respuesta.getBody());
     }
 
     @ExceptionHandler(ResponseStatusException.class)
