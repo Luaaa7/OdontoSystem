@@ -6,4 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.UUID;
 
 public interface VerificacionCopRepository extends JpaRepository<VerificacionCop, Long> {
-}
+
+    long countByOdontologo_UsuarioIdAndResultado(java.util.UUID odontologoId,
+                                                 com.odontosystem.OdontoSystem.entity.ResultadoVerificacionCop resultado);
+
+    java.util.Optional<VerificacionCop> findFirstByOdontologo_UsuarioIdOrderByEjecutadoEnDesc(java.util.UUID odontologoId);
+}

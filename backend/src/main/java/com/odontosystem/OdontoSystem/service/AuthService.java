@@ -7,7 +7,6 @@ import com.odontosystem.OdontoSystem.entity.*;
 import com.odontosystem.OdontoSystem.repository.PerfilOdontologoRepository;
 import com.odontosystem.OdontoSystem.repository.ReputacionPacienteRepository;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
-import com.odontosystem.OdontoSystem.repository.VerificacionCopRepository;
 import com.odontosystem.OdontoSystem.security.JwtService;
 import com.odontosystem.OdontoSystem.security.LimiteLoginService;
 import com.odontosystem.OdontoSystem.security.LoginBloqueadoException;
@@ -24,11 +23,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.text.Normalizer;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class AuthService {
@@ -40,8 +34,7 @@ public class AuthService {
     private final TokenRefrescoService tokenRefrescoService;
     private final PerfilOdontologoRepository perfilOdontologoRepository;
     private final ReputacionPacienteRepository reputacionPacienteRepository;
-    private final VerificacionCopRepository verificacionCopRepository;
-    private final ColegioOdontologicoVerificacionService verificacionCopService;
+    private final VerificacionColegiaturaService verificacionColegiatura;
     private final LimiteLoginService limiteLogin;
     private final ConsentimientoService consentimientos;
 
@@ -53,8 +46,7 @@ public class AuthService {
             TokenRefrescoService tokenRefrescoService,
             PerfilOdontologoRepository perfilOdontologoRepository,
             ReputacionPacienteRepository reputacionPacienteRepository,
-            VerificacionCopRepository verificacionCopRepository,
-            ColegioOdontologicoVerificacionService verificacionCopService,
+            VerificacionColegiaturaService verificacionColegiatura,
             LimiteLoginService limiteLogin,
             ConsentimientoService consentimientos
     ) {
@@ -65,8 +57,7 @@ public class AuthService {
         this.tokenRefrescoService = tokenRefrescoService;
         this.perfilOdontologoRepository = perfilOdontologoRepository;
         this.reputacionPacienteRepository = reputacionPacienteRepository;
-        this.verificacionCopRepository = verificacionCopRepository;
-        this.verificacionCopService = verificacionCopService;
+        this.verificacionColegiatura = verificacionColegiatura;
         this.limiteLogin = limiteLogin;
         this.consentimientos = consentimientos;
     }
@@ -125,79 +116,12 @@ public class AuthService {
         return new AuthResponse(accessToken, refreshToken, usuario.getRol().name(), usuario.getNombreCompleto());
     }
 
+    /** Crea el perfil y lo verifica en el COP; si el COP no responde, queda PENDIENTE y se reintenta solo (RF09). */
     private void crearPerfilOdontologoConVerificacion(Usuario usuario, String numeroColegiatura) {
-        PerfilOdontologo perfil = PerfilOdontologo.builder()
+        verificacionColegiatura.verificarYGuardar(PerfilOdontologo.builder()
                 .usuario(usuario)
                 .numeroColegiatura(numeroColegiatura)
-                .build();
-
-        var resultado = verificacionCopService.verificar(numeroColegiatura);
-
-        ResultadoVerificacionCop resultadoParaLog;
-        String detalle;
-
-        switch (resultado.estado()) {
-            case VERIFICADO_IDENTIDAD -> {
-                boolean nombreCoincide = nombresCoinciden(usuario.getNombreCompleto(), resultado.nombreEncontrado());
-                if (nombreCoincide) {
-                    perfil.setColegiaturaVerificada(true);
-                    perfil.setColegiaturaVerificadaEn(java.time.OffsetDateTime.now());
-                    perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.VERIFICADO);
-                    perfil.setVerificadoEn(java.time.OffsetDateTime.now());
-                    resultadoParaLog = ResultadoVerificacionCop.VERIFICADO;
-                    detalle = "Identidad confirmada contra el registro nacional COP: " + resultado.nombreEncontrado()
-                            + " (" + resultado.region() + ").";
-                } else {
-                    perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.OBSERVADO);
-                    perfil.setNotaObservacion("El nombre registrado no coincide claramente con el nombre encontrado en el COP ("
-                            + resultado.nombreEncontrado() + "). Requiere revisión.");
-                    resultadoParaLog = ResultadoVerificacionCop.RECHAZADO;
-                    detalle = "COP encontrado pero el nombre no coincide: esperado='" + usuario.getNombreCompleto()
-                            + "', encontrado='" + resultado.nombreEncontrado() + "'.";
-                }
-            }
-            case NO_ENCONTRADO -> {
-                perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.RECHAZADO);
-                perfil.setNotaObservacion("No se encontró el número de colegiatura " + numeroColegiatura + " en el registro nacional del COP.");
-                resultadoParaLog = ResultadoVerificacionCop.RECHAZADO;
-                detalle = "Número de COP no encontrado en el buscador nacional.";
-            }
-            default -> {
-                perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.PENDIENTE);
-                perfil.setNotaObservacion("No se pudo verificar automáticamente en este momento; se reintentará.");
-                resultadoParaLog = ResultadoVerificacionCop.ERROR;
-                detalle = "Error de red/parsing al consultar el buscador nacional del COP.";
-            }
-        }
-
-        perfilOdontologoRepository.save(perfil);
-
-        VerificacionCop log = VerificacionCop.builder()
-                .odontologo(perfil)
-                .numeroCop(numeroColegiatura)
-                .resultado(resultadoParaLog)
-                .detalle(detalle)
-                .build();
-        verificacionCopRepository.save(log);
-    }
-
-    /** Compara nombres tolerando orden distinto, acentos y mayúsculas/minúsculas. */
-    private boolean nombresCoinciden(String nombreA, String nombreB) {
-        if (nombreB == null) return false;
-        Set<String> tokensA = normalizarYTokenizar(nombreA);
-        Set<String> tokensB = normalizarYTokenizar(nombreB);
-        long coincidencias = tokensA.stream().filter(tokensB::contains).count();
-        int minimo = Math.min(tokensA.size(), tokensB.size());
-        return coincidencias >= Math.max(1, minimo - 1); // tolera 1 token de diferencia
-    }
-
-    private Set<String> normalizarYTokenizar(String texto) {
-        String sinAcentos = Normalizer.normalize(texto, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .toUpperCase();
-        return Arrays.stream(sinAcentos.split("\\s+"))
-                .filter(t -> !t.isBlank())
-                .collect(Collectors.toCollection(HashSet::new));
+                .build());
     }
 
     /**

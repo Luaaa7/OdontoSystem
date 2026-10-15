@@ -54,6 +54,7 @@ class AuthLoginServiceTest {
     @Mock private ReputacionPacienteRepository reputaciones;
     @Mock private VerificacionCopRepository verificaciones;
     @Mock private ColegioOdontologicoVerificacionService cop;
+    @Mock private com.odontosystem.OdontoSystem.service.VerificacionColegiaturaService verificacionColegiatura;
     @Mock private LimiteLoginService limite;
     @Mock private com.odontosystem.OdontoSystem.usuarios.ConsentimientoService consentimientos;
     @Mock private HttpServletRequest http;
@@ -63,7 +64,7 @@ class AuthLoginServiceTest {
 
     @BeforeEach
     void setUp() {
-        servicio = new AuthService(usuarios, encoder, authManager, jwt, tokens, perfiles, reputaciones, verificaciones, cop, limite,
+        servicio = new AuthService(usuarios, encoder, authManager, jwt, tokens, perfiles, reputaciones, verificacionColegiatura, limite,
                 consentimientos);
         when(http.getRemoteAddr()).thenReturn(IP);
         when(limite.segundosDeBloqueo()).thenReturn(900L);
