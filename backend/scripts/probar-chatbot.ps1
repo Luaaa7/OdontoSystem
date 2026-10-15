@@ -49,7 +49,7 @@ if ([string]::IsNullOrWhiteSpace($correo)) {
     $clave = "Prb-" + [guid]::NewGuid().ToString("N").Substring(0, 16)
     $registro = Llamar "POST" "/api/auth/register" @{
         numero_documento = "9$sufijo"; tipo_documento = "DNI"; nombre_completo = "Paciente Prueba Chatbot"
-        telefono = "900$sufijo".Substring(0, 9); correo = $correo; password = $clave; rol = "PACIENTE" } $null
+        telefono = "900$sufijo".Substring(0, 9); correo = $correo; password = $clave; rol = "PACIENTE"; acepta_privacidad = $true } $null
     if (-not $registro) { Write-Host "No se pudo crear el paciente de prueba."; exit 1 }
     Write-Host "[OK]    Paciente de prueba creado: $correo" -ForegroundColor Green; $ok++
 } else {

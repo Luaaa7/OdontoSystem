@@ -54,7 +54,7 @@ $sufijo = Get-Random -Minimum 1000000 -Maximum 9999999
 $correo = "prueba.login.$sufijo@odontosystem.pe"
 $clave = "Prb-" + [guid]::NewGuid().ToString("N").Substring(0, 16)
 $registro = @{ numero_documento = "8$sufijo"; tipo_documento = "DNI"; nombre_completo = "Paciente Prueba Login"
-    telefono = "910$sufijo".Substring(0, 9); correo = $correo; password = $clave; rol = "PACIENTE" } | ConvertTo-Json -Compress
+    telefono = "910$sufijo".Substring(0, 9); correo = $correo; password = $clave; rol = "PACIENTE"; acepta_privacidad = $true } | ConvertTo-Json -Compress
 try {
     Invoke-WebRequest -Uri "$Base/api/auth/register" -Method POST -Body ([System.Text.Encoding]::UTF8.GetBytes($registro)) `
         -ContentType "application/json; charset=utf-8" -UseBasicParsing -ErrorAction Stop | Out-Null

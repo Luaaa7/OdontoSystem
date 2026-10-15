@@ -48,7 +48,7 @@ if (-not $login) {
     $dni = "7" + (Get-Random -Minimum 1000000 -Maximum 9999999)
     $login = Llamar "POST" "/api/auth/register" @{ numero_documento = $dni; tipo_documento = "DNI"
         nombre_completo = "Paciente Prueba Correos"; telefono = "9" + (Get-Random -Minimum 10000000 -Maximum 99999999)
-        correo = $correo; password = $clave; rol = "PACIENTE" } $null
+        correo = $correo; password = $clave; rol = "PACIENTE"; acepta_privacidad = $true } $null
     if (-not $login) {
         Write-Host "[FALLA] No se pudo crear la cuenta -> $script:ultimoCodigo $script:ultimoError" -ForegroundColor Red
         Write-Host "Si el correo ya existe, la contrasena que escribiste no es la correcta." -ForegroundColor Yellow

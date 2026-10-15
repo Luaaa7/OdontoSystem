@@ -12,6 +12,7 @@ import com.odontosystem.OdontoSystem.security.JwtService;
 import com.odontosystem.OdontoSystem.security.LimiteLoginService;
 import com.odontosystem.OdontoSystem.security.LoginBloqueadoException;
 import com.odontosystem.OdontoSystem.security.UsuarioPrincipal;
+import com.odontosystem.OdontoSystem.usuarios.ConsentimientoService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -42,6 +43,7 @@ public class AuthService {
     private final VerificacionCopRepository verificacionCopRepository;
     private final ColegioOdontologicoVerificacionService verificacionCopService;
     private final LimiteLoginService limiteLogin;
+    private final ConsentimientoService consentimientos;
 
     public AuthService(
             UsuarioRepository usuarioRepository,
@@ -53,7 +55,8 @@ public class AuthService {
             ReputacionPacienteRepository reputacionPacienteRepository,
             VerificacionCopRepository verificacionCopRepository,
             ColegioOdontologicoVerificacionService verificacionCopService,
-            LimiteLoginService limiteLogin
+            LimiteLoginService limiteLogin,
+            ConsentimientoService consentimientos
     ) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
@@ -65,6 +68,7 @@ public class AuthService {
         this.verificacionCopRepository = verificacionCopRepository;
         this.verificacionCopService = verificacionCopService;
         this.limiteLogin = limiteLogin;
+        this.consentimientos = consentimientos;
     }
 
     @Transactional
@@ -102,6 +106,8 @@ public class AuthService {
                 .build();
 
         usuario = usuarioRepository.save(usuario);
+        // RNF07: queda registrado qué versión de la política aceptó, cuándo y desde qué IP
+        consentimientos.registrar(usuario.getId(), httpRequest.getRemoteAddr());
 
         if (request.rol() == RolUsuario.PACIENTE) {
             ReputacionPaciente reputacion = ReputacionPaciente.builder()
@@ -240,4 +246,4 @@ public class AuthService {
 
         return new AuthResponse(nuevoAccessToken, resultado.refreshTokenPlano(), usuario.getRol().name(), usuario.getNombreCompleto());
     }
-}
+}
