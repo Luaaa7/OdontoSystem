@@ -73,7 +73,9 @@ class CitaServiceTest {
     @BeforeEach
     void setUp() {
         Clock reloj = Clock.fixed(Instant.parse("2026-10-19T13:00:00Z"), ZoneOffset.UTC);
-        servicio = new CitaService(citaRepository, usuarioRepository, reputacionRepository, disponibilidadService,
+        servicio = new CitaService(citaRepository, usuarioRepository,
+                new com.odontosystem.OdontoSystem.usuarios.ReputacionService(reputacionRepository, parametros, reloj),
+                disponibilidadService,
                 bloqueoReservas, parametros, entityManager, reloj, eventos, reembolsos);
         paciente = Usuario.builder().id(UUID.randomUUID()).nombreCompleto("Paciente").rol(RolUsuario.PACIENTE).build();
         UUID odontologoId = UUID.randomUUID();
@@ -241,5 +243,53 @@ class CitaServiceTest {
         assertThat(servicio.vencerReservasSinPago()).isEqualTo(1);
         assertThat(vieja.getEstado()).isEqualTo(EstadoCita.CANCELADA_SIN_REEMBOLSO);
         assertThat(vieja.getMotivoCancelacion()).contains("a tiempo");
+    }
+
+    @Test
+    @DisplayName("Paciente cancela una cita pagada con menos de 2 h → sin reembolso y +1 strike; con 3 h → sin strike")
+    void cancelarUltimoMomentoSumaStrike() {
+        guardarDevuelve();
+        when(reputacionRepository.findById(paciente.getId())).thenReturn(Optional.empty());
+        when(reputacionRepository.save(any(ReputacionPaciente.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Cita entreTres = cita(EstadoCita.CONFIRMADA, lunesA(11));
+        when(citaRepository.findById(entreTres.getId())).thenReturn(Optional.of(entreTres));
+        assertThat(servicio.cancelar(paciente.getId(), entreTres.getId(), null).estado())
+                .isEqualTo(EstadoCita.CANCELADA_SIN_REEMBOLSO);
+        verify(reputacionRepository, never()).save(any());
+
+        Cita enUnaHora = cita(EstadoCita.CONFIRMADA, lunesA(9));
+        when(citaRepository.findById(enUnaHora.getId())).thenReturn(Optional.of(enUnaHora));
+        assertThat(servicio.cancelar(paciente.getId(), enUnaHora.getId(), null).estado())
+                .isEqualTo(EstadoCita.CANCELADA_SIN_REEMBOLSO);
+        ArgumentCaptor<ReputacionPaciente> guardada = ArgumentCaptor.forClass(ReputacionPaciente.class);
+        verify(reputacionRepository).save(guardada.capture());
+        assertThat(guardada.getValue().getCantidadStrikes()).isEqualTo((short) 1);
+    }
+
+    @Test
+    @DisplayName("El odontólogo cancela a última hora → reembolso y ningún strike para el paciente")
+    void odontologoCancelaUltimoMomento() {
+        guardarDevuelve();
+        Cita enUnaHora = cita(EstadoCita.CONFIRMADA, lunesA(9));
+        when(citaRepository.findById(enUnaHora.getId())).thenReturn(Optional.of(enUnaHora));
+        assertThat(servicio.cancelar(perfil.getUsuarioId(), enUnaHora.getId(), null).estado())
+                .isEqualTo(EstadoCita.CANCELADA_CON_REEMBOLSO);
+        verify(reputacionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Completar la cita le quita un strike al paciente")
+    void completarQuitaStrike() {
+        guardarDevuelve();
+        Cita atendida = cita(EstadoCita.CONFIRMADA, lunesA(7));
+        when(citaRepository.findById(atendida.getId())).thenReturn(Optional.of(atendida));
+        when(reputacionRepository.findById(paciente.getId())).thenReturn(Optional.of(ReputacionPaciente.builder()
+                .usuario(paciente).cantidadStrikes((short) 2).estado(EstadoReputacion.REGULAR).build()));
+
+        assertThat(servicio.completar(perfil.getUsuarioId(), atendida.getId()).estado()).isEqualTo(EstadoCita.COMPLETADA);
+        ArgumentCaptor<ReputacionPaciente> guardada = ArgumentCaptor.forClass(ReputacionPaciente.class);
+        verify(reputacionRepository).save(guardada.capture());
+        assertThat(guardada.getValue().getCantidadStrikes()).isEqualTo((short) 1);
     }
 }

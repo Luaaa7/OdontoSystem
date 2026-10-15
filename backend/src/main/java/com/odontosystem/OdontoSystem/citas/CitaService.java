@@ -7,15 +7,13 @@ import com.odontosystem.OdontoSystem.citas.CitaDtos.ReservaRequest;
 import com.odontosystem.OdontoSystem.citas.CitaDtos.ServicioResumen;
 import com.odontosystem.OdontoSystem.entity.Cita;
 import com.odontosystem.OdontoSystem.entity.EstadoCita;
-import com.odontosystem.OdontoSystem.entity.EstadoReputacion;
 import com.odontosystem.OdontoSystem.entity.PerfilOdontologo;
-import com.odontosystem.OdontoSystem.entity.ReputacionPaciente;
 import com.odontosystem.OdontoSystem.entity.RolUsuario;
 import com.odontosystem.OdontoSystem.entity.Servicio;
 import com.odontosystem.OdontoSystem.entity.Usuario;
 import com.odontosystem.OdontoSystem.repository.CitaRepository;
-import com.odontosystem.OdontoSystem.repository.ReputacionPacienteRepository;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
+import com.odontosystem.OdontoSystem.usuarios.ReputacionService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -55,7 +53,8 @@ public class CitaService {
 
     private final CitaRepository citaRepository;
     private final UsuarioRepository usuarioRepository;
-    private final ReputacionPacienteRepository reputacionRepository;
+    /** RF05 / RF09: strikes y suspensión del paciente. */
+    private final ReputacionService reputacion;
     private final DisponibilidadService disponibilidadService;
     private final BloqueoReservas bloqueoReservas;
     private final ParametrosSistema parametros;
@@ -75,7 +74,7 @@ public class CitaService {
         Usuario paciente = usuarioRepository.findById(pacienteId)
                 .filter(u -> u.getRol() == RolUsuario.PACIENTE)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un paciente puede reservar"));
-        exigirReputacionVigente(pacienteId);
+        reputacion.exigirQuePuedaReservar(pacienteId);
         if (citaRepository.countByPaciente_IdAndEstado(pacienteId, EstadoCita.PENDIENTE_PAGO) >= MAXIMO_PENDIENTES_DE_PAGO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Tienes " + MAXIMO_PENDIENTES_DE_PAGO + " reservas sin pagar; págalas o cancélalas antes de reservar otra");
@@ -123,16 +122,6 @@ public class CitaService {
         }
     }
 
-    private void exigirReputacionVigente(UUID pacienteId) {
-        reputacionRepository.findById(pacienteId).ifPresent(r -> {
-            boolean restringido = r.getRestringidoHasta() != null && r.getRestringidoHasta().isAfter(OffsetDateTime.now(clock));
-            if (r.getEstado() == EstadoReputacion.BLOQUEADO || restringido) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "Tu cuenta no puede reservar por inasistencias anteriores");
-            }
-        });
-    }
-
     // ------------------------------------------------------------------
     // Consultar
     // ------------------------------------------------------------------
@@ -163,6 +152,8 @@ public class CitaService {
     /**
      * Cancela la cita. Reembolso: si la cancela el odontólogo, siempre; si la cancela el paciente,
      * solo con al menos HORAS_MINIMAS_CANCELACION_REEMBOLSO (12 h) de anticipación. Sin pago no hay reembolso.
+     * Si el paciente cancela una cita pagada con menos de HORAS_CANCELACION_CON_STRIKE (2 h), además suma un strike:
+     * para el odontólogo es casi lo mismo que una inasistencia.
      */
     @Transactional
     public CitaResponse cancelar(UUID usuarioId, UUID citaId, String motivo) {
@@ -189,6 +180,11 @@ public class CitaService {
         if (nuevo == EstadoCita.CANCELADA_CON_REEMBOLSO) {
             reembolsos.reembolsarDeposito(cita.getId(), "cancelacion:" + cita.getId(), texto);
         }
+        int horasStrike = parametros.entero(ParametrosSistema.HORAS_CANCELACION_STRIKE, 2);
+        boolean ultimoMomento = Duration.between(ahora, cita.getInicioProgramado()).toMinutes() < horasStrike * 60L;
+        if (!esOdontologo && pagada && ultimoMomento) {
+            reputacion.sumarStrike(cita.getPaciente());
+        }
         return respuesta;
     }
 
@@ -212,12 +208,16 @@ public class CitaService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La cita todavía no empieza");
         }
         cita.setCompletadoEn(OffsetDateTime.now(clock));
-        return cambiarEstado(cita, odontologoId, EstadoCita.COMPLETADA, null);
+        CitaResponse respuesta = cambiarEstado(cita, odontologoId, EstadoCita.COMPLETADA, null);
+        // Asistir limpia: cada cita cumplida le quita un strike al paciente
+        reputacion.quitarStrike(cita.getPaciente().getId());
+        return respuesta;
     }
 
     /**
      * RF09: el paciente no llegó. Solo después de la tolerancia (15 min, la fija la BD).
-     * Suma un strike; con LIMITE_MAXIMO_STRIKES (3) la cuenta queda BLOQUEADA para reservar.
+     * Suma un strike; con LIMITE_MAXIMO_STRIKES (3) la cuenta queda suspendida 30 días (ver ReputacionService).
+     * El depósito no se devuelve: compensa al odontólogo por el turno perdido.
      */
     @Transactional
     public CitaResponse marcarInasistencia(UUID odontologoId, UUID citaId) {
@@ -228,15 +228,7 @@ public class CitaService {
         if (OffsetDateTime.now(clock).isBefore(vence)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Aún está dentro del tiempo de tolerancia");
         }
-        UUID pacienteId = cita.getPaciente().getId();
-        ReputacionPaciente reputacion = reputacionRepository.findById(pacienteId)
-                .orElseGet(() -> ReputacionPaciente.builder().usuario(cita.getPaciente()).build());
-        short strikes = (short) (reputacion.getCantidadStrikes() + 1);
-        int limite = parametros.entero(ParametrosSistema.LIMITE_STRIKES, 3);
-        reputacion.setCantidadStrikes(strikes);
-        reputacion.setEstado(strikes >= limite ? EstadoReputacion.BLOQUEADO : EstadoReputacion.REGULAR);
-        reputacion.setActualizadoEn(OffsetDateTime.now(clock));
-        reputacionRepository.save(reputacion);
+        reputacion.sumarStrike(cita.getPaciente());
         return cambiarEstado(cita, odontologoId, EstadoCita.INASISTENCIA_PENALIZADA, "Inasistencia del paciente");
     }
 

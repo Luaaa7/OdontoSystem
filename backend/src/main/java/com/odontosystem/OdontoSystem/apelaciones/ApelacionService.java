@@ -4,17 +4,14 @@ import com.odontosystem.OdontoSystem.apelaciones.ApelacionDtos.ApelacionResponse
 import com.odontosystem.OdontoSystem.archivos.ArchivoService;
 import com.odontosystem.OdontoSystem.archivos.ArchivoService.ArchivoSubido;
 import com.odontosystem.OdontoSystem.archivos.ArchivoService.EnlaceTemporal;
-import com.odontosystem.OdontoSystem.citas.ParametrosSistema;
 import com.odontosystem.OdontoSystem.citas.ReembolsoService;
 import com.odontosystem.OdontoSystem.entity.Apelacion;
 import com.odontosystem.OdontoSystem.entity.Cita;
 import com.odontosystem.OdontoSystem.entity.EstadoApelacion;
 import com.odontosystem.OdontoSystem.entity.EstadoCita;
-import com.odontosystem.OdontoSystem.entity.EstadoReputacion;
-import com.odontosystem.OdontoSystem.entity.ReputacionPaciente;
 import com.odontosystem.OdontoSystem.repository.ApelacionRepository;
 import com.odontosystem.OdontoSystem.repository.CitaRepository;
-import com.odontosystem.OdontoSystem.repository.ReputacionPacienteRepository;
+import com.odontosystem.OdontoSystem.usuarios.ReputacionService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,21 +41,19 @@ public class ApelacionService {
 
     private final ApelacionRepository apelacionRepository;
     private final CitaRepository citaRepository;
-    private final ReputacionPacienteRepository reputacionRepository;
+    private final ReputacionService reputacion;
     private final ArchivoService archivoService;
     private final ReembolsoService reembolsoService;
-    private final ParametrosSistema parametros;
     private final Clock clock;
 
     public ApelacionService(ApelacionRepository apelacionRepository, CitaRepository citaRepository,
-                            ReputacionPacienteRepository reputacionRepository, ArchivoService archivoService,
-                            ReembolsoService reembolsoService, ParametrosSistema parametros, Clock clock) {
+                            ReputacionService reputacion, ArchivoService archivoService,
+                            ReembolsoService reembolsoService, Clock clock) {
         this.apelacionRepository = apelacionRepository;
         this.citaRepository = citaRepository;
-        this.reputacionRepository = reputacionRepository;
+        this.reputacion = reputacion;
         this.archivoService = archivoService;
         this.reembolsoService = reembolsoService;
-        this.parametros = parametros;
         this.clock = clock;
     }
 
@@ -127,7 +122,7 @@ public class ApelacionService {
 
         UUID pacienteId = apelacion.getCita().getPaciente().getId();
         if (aprobar) {
-            quitarUnStrike(pacienteId, ahora);
+            reputacion.quitarStrike(pacienteId);
             reembolsoService.reembolsarDeposito(apelacion.getCita().getId(), "apelacion:" + apelacion.getCita().getId(),
                     "Apelación aprobada: inasistencia justificada");
         }
@@ -136,24 +131,8 @@ public class ApelacionService {
 
     // ------------------------------------------------------------------
 
-    /** Un strike menos; el estado se recalcula (0 = EXCELENTE, debajo del límite = REGULAR). */
-    private void quitarUnStrike(UUID pacienteId, OffsetDateTime ahora) {
-        reputacionRepository.findById(pacienteId).ifPresent(r -> {
-            int strikes = Math.max(0, r.getCantidadStrikes() - 1);
-            int limite = parametros.entero(ParametrosSistema.LIMITE_STRIKES, 3);
-            r.setCantidadStrikes((short) strikes);
-            r.setEstado(strikes == 0 ? EstadoReputacion.EXCELENTE
-                    : strikes < limite ? EstadoReputacion.REGULAR : EstadoReputacion.BLOQUEADO);
-            if (r.getEstado() != EstadoReputacion.BLOQUEADO) {
-                r.setRestringidoHasta(null);
-            }
-            r.setActualizadoEn(ahora);
-            reputacionRepository.save(r);
-        });
-    }
-
     private Short strikesDe(UUID pacienteId) {
-        return reputacionRepository.findById(pacienteId).map(ReputacionPaciente::getCantidadStrikes).orElse((short) 0);
+        return reputacion.strikesDe(pacienteId);
     }
 
     private ApelacionResponse aRespuesta(Apelacion a, Short strikes) {

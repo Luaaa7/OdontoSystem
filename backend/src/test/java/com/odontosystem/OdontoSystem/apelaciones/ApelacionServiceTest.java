@@ -67,7 +67,9 @@ class ApelacionServiceTest {
 
     @BeforeEach
     void setUp() {
-        servicio = new ApelacionService(apelaciones, citas, reputaciones, archivos, reembolsos, parametros, RELOJ);
+        servicio = new ApelacionService(apelaciones, citas,
+                new com.odontosystem.OdontoSystem.usuarios.ReputacionService(reputaciones, parametros, RELOJ),
+                archivos, reembolsos, RELOJ);
         paciente = Usuario.builder().id(UUID.randomUUID()).nombreCompleto("Lucía Ramos").build();
         odontologo = PerfilOdontologo.builder().usuarioId(UUID.randomUUID()).build();
         when(parametros.entero(anyString(), anyInt())).thenAnswer(i -> i.getArgument(1));
