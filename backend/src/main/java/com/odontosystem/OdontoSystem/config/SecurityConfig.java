@@ -86,6 +86,7 @@ public class SecurityConfig {
                         // Historia clínica: la escribe el odontólogo de la cita; el paciente ve todo su historial
                         .requestMatchers(HttpMethod.POST, "/api/citas/*/historia").hasRole("ODONTOLOGO")
                         .requestMatchers(HttpMethod.GET, "/api/historias/mias").hasRole("PACIENTE")
+                        .requestMatchers(HttpMethod.GET, "/api/usuarios/yo/reputacion").hasRole("PACIENTE")
                         // Railway consulta este endpoint para saber si la app está viva
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()

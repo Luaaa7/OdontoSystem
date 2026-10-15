@@ -502,4 +502,26 @@ class ChatbotServiceTest {
         assertThat(respuesta.intencion()).isEqualTo("CONSULTAR_HISTORIAL");
         assertThat(respuesta.mensaje()).contains("Todavía no tienes citas");
     }
+
+    @Test
+    @DisplayName("\"cancelar\" sin nada en curso responde con el menú, no con \"No entendí\"")
+    void cancelarSinFlujo() {
+        RespuestaChatbot r = escribir("cancelar");
+        assertThat(r.mensaje()).contains("No había nada en curso").doesNotContain("No entendí");
+    }
+
+    @Test
+    @DisplayName("\"cancelar mi cita\" sin flujo indica dónde cancelar una cita")
+    void cancelarCitaSinFlujo() {
+        RespuestaChatbot r = escribir("cancelar mi cita");
+        assertThat(r.mensaje()).contains("Mis citas");
+    }
+
+    @Test
+    @DisplayName("\"menu\" sin flujo muestra el menú")
+    void menuSinFlujo() {
+        RespuestaChatbot r = escribir("menu");
+        assertThat(r.mensaje()).isEqualTo("¿En qué te ayudo?");
+        assertThat(r.opciones()).isNotEmpty();
+    }
 }

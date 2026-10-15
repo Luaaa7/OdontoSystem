@@ -165,6 +165,16 @@ public class ChatbotService {
         if (paso != null && LectorRespuestas.esCancelacion(normalizado)) {
             return cancelarFlujo(c);
         }
+        // "cancelar" sin nada en curso: no es un mensaje incomprensible
+        if (paso == null && LectorRespuestas.esCancelacion(normalizado)) {
+            if (normalizado.contains("cita")) {
+                return menu(c, "Para cancelar una cita entra a \"Mis citas\" en tu panel: ahí ves si se te devuelve "
+                        + "el depósito. ¿Te ayudo con algo más?");
+            }
+            return menu(c, normalizado.startsWith("cancel")
+                    ? "No había nada en curso que cancelar. ¿En qué te ayudo?"
+                    : "¿En qué te ayudo?");
+        }
         Intencion intencion = intentDetector.detectar(texto);
         Optional<String> distrito = distritoExtractor.extraer(texto);
 
