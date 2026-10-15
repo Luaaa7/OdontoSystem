@@ -147,6 +147,39 @@ public class ReclamoService {
         return aRespuesta(guardado);
     }
 
+    /**
+     * Tarea programada: si el odontólogo no resolvió el reclamo de su paciente dentro de los 15 días hábiles,
+     * se resuelve a favor del paciente: se le devuelve el depósito (si todavía está en custodia) y se le avisa.
+     */
+    @Transactional
+    public int resolverVencidos() {
+        LocalDate hoy = LocalDate.now(clock.withZone(ZONA));
+        OffsetDateTime ahora = OffsetDateTime.now(clock);
+        int resueltos = 0;
+        for (Reclamo r : reclamoRepository.conCitaEnEstados(SIN_RESOLVER)) {
+            if (!atiendeOdontologo(r) || !hoy.isAfter(responderAntes(r))) continue;
+            UUID citaId = r.getCita().getId();
+            boolean devuelto = false;
+            if (!liquidaciones.yaPagada(citaId)) {
+                String motivo = "Devuelto automáticamente: el reclamo " + codigo(r.getId())
+                        + " no se respondió a tiempo";
+                devuelto = reembolsos.reembolsarDeposito(citaId, "reclamo:" + r.getId(), motivo).isPresent();
+                if (devuelto) liquidaciones.cancelarDeCita(citaId, motivo);
+            }
+            String aviso = "[OdontoSystem] El odontólogo no resolvió este reclamo dentro del plazo de "
+                    + DIAS_HABILES_RESPUESTA + " días hábiles, así que se resolvió a tu favor"
+                    + (devuelto ? " y se te devolvió el depósito de la cita." : ".")
+                    + " Si no estás conforme, puedes presentar este código ante Indecopi.";
+            r.setRespuesta(r.getRespuesta() == null ? aviso : r.getRespuesta() + "\n\n" + aviso);
+            r.setEstado(EstadoReclamo.RESUELTO);
+            r.setResueltoEn(ahora);
+            reclamoRepository.saveAndFlush(r);
+            eventos.publishEvent(new ReclamoRegistrado(r.getId(), Aviso.RESPONDIDO));
+            resueltos++;
+        }
+        return resueltos;
+    }
+
     // ------------------------------------------------------------------
 
     /**

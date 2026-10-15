@@ -254,4 +254,46 @@ class ReclamoServiceTest {
                 new RespuestaRequest("Ok", true, true))).satisfies(e -> assertThat(estado(e)).isEqualTo(409));
         verify(liquidaciones, never()).cancelarDeCita(any(), any());
     }
+
+    private Reclamo creadoHace(int dias, EstadoReclamo estado) {
+        Reclamo r = Reclamo.builder().id(UUID.randomUUID()).usuario(paciente).cita(cita()).tipo(TipoReclamo.RECLAMO)
+                .estado(estado).asunto("Cobro").descripcion("x")
+                .creadoEn(OffsetDateTime.ofInstant(AHORA, ZoneOffset.UTC).minusDays(dias)).build();
+        return r;
+    }
+
+    @Test
+    @DisplayName("Sin resolver pasados 15 días hábiles: se resuelve a favor del paciente y se devuelve el depósito")
+    void vencidoAFavorDelPaciente() {
+        Reclamo vencido = creadoHace(30, EstadoReclamo.EN_PROCESO);
+        vencido.setRespuesta("Lo reviso");
+        Reclamo aTiempo = creadoHace(3, EstadoReclamo.ABIERTO);
+        when(reclamos.conCitaEnEstados(any())).thenReturn(List.of(vencido, aTiempo));
+        when(reembolsos.reembolsarDeposito(eq(vencido.getCita().getId()), eq("reclamo:" + vencido.getId()), any()))
+                .thenReturn(Optional.of(new com.odontosystem.OdontoSystem.citas.ReembolsoService.ReembolsoResponse(
+                        UUID.randomUUID(), null, null, null, "sim_rfd_1", null, null, true)));
+
+        assertThat(servicio.resolverVencidos()).isEqualTo(1);
+
+        assertThat(vencido.getEstado()).isEqualTo(EstadoReclamo.RESUELTO);
+        assertThat(vencido.getResueltoEn()).isNotNull();
+        assertThat(vencido.getRespuesta()).startsWith("Lo reviso").contains("se te devolvió el depósito").contains("Indecopi");
+        assertThat(aTiempo.getEstado()).isEqualTo(EstadoReclamo.ABIERTO);
+        verify(liquidaciones).cancelarDeCita(eq(vencido.getCita().getId()), any());
+        verify(eventos).publishEvent(any(ReclamoRegistrado.class));
+    }
+
+    @Test
+    @DisplayName("Vencido pero el depósito ya se pagó al odontólogo: se resuelve sin devolución")
+    void vencidoYaPagado() {
+        Reclamo vencido = creadoHace(30, EstadoReclamo.ABIERTO);
+        when(reclamos.conCitaEnEstados(any())).thenReturn(List.of(vencido));
+        when(liquidaciones.yaPagada(vencido.getCita().getId())).thenReturn(true);
+
+        assertThat(servicio.resolverVencidos()).isEqualTo(1);
+
+        assertThat(vencido.getEstado()).isEqualTo(EstadoReclamo.RESUELTO);
+        assertThat(vencido.getRespuesta()).doesNotContain("devolvió");
+        verify(reembolsos, never()).reembolsarDeposito(any(), any(), any());
+    }
 }

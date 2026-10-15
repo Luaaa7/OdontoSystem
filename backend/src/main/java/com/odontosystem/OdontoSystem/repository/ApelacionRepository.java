@@ -16,6 +16,12 @@ public interface ApelacionRepository extends JpaRepository<Apelacion, UUID> {
 
     boolean existsByCita_IdAndEstado(UUID citaId, EstadoApelacion estado);
 
+    /** Apelaciones en ese estado presentadas antes de la fecha límite (las que el odontólogo dejó sin revisar). */
+    @Query("select a from Apelacion a join fetch a.cita c join fetch c.paciente "
+            + "where a.estado = :estado and a.creadoEn < :limite")
+    List<Apelacion> sinRevisarDesde(@Param("estado") EstadoApelacion estado,
+                                    @Param("limite") java.time.OffsetDateTime limite);
+
     Optional<Apelacion> findByCita_Id(UUID citaId);
 
     /** Apelaciones sobre citas de ese odontólogo, las más antiguas primero. */

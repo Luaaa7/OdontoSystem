@@ -196,4 +196,27 @@ class ApelacionServiceTest {
         assertThatThrownBy(() -> servicio.resolver(odontologo.getUsuarioId(), a.getId(), true, null))
                 .satisfies(e -> assertThat(estado(e)).isEqualTo(409));
     }
+
+    @Test
+    @DisplayName("Sin revisar en 7 días: se aprueba sola, −1 strike y devolución del depósito")
+    void aprobadaSola() {
+        Cita c = cita(EstadoCita.INASISTENCIA_PENALIZADA, AHORA.minusDays(9));
+        Apelacion a = Apelacion.builder().id(UUID.randomUUID()).cita(c).urlCertificado("u")
+                .creadoEn(AHORA.minusDays(8)).build();
+        when(apelaciones.sinRevisarDesde(org.mockito.ArgumentMatchers.eq(EstadoApelacion.PENDIENTE),
+                org.mockito.ArgumentMatchers.eq(AHORA.minusDays(7).atZoneSameInstant(ZoneOffset.UTC).toOffsetDateTime())))
+                .thenReturn(java.util.List.of(a));
+        ReputacionPaciente rep = ReputacionPaciente.builder().usuarioId(paciente.getId()).cantidadStrikes((short) 1)
+                .estado(EstadoReputacion.REGULAR).build();
+        when(reputaciones.findById(paciente.getId())).thenReturn(Optional.of(rep));
+
+        assertThat(servicio.aprobarSinRevisar()).isEqualTo(1);
+
+        assertThat(a.getEstado()).isEqualTo(EstadoApelacion.APROBADA);
+        assertThat(a.getNotaResolucion()).contains("automáticamente");
+        assertThat(a.getResueltoPorOdontologoId()).isNull();
+        assertThat(rep.getCantidadStrikes()).isZero();
+        verify(reembolsos).reembolsarDeposito(org.mockito.ArgumentMatchers.eq(c.getId()),
+                org.mockito.ArgumentMatchers.eq("apelacion:" + c.getId()), anyString());
+    }
 }

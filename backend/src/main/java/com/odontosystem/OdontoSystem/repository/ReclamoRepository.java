@@ -15,6 +15,11 @@ public interface ReclamoRepository extends JpaRepository<Reclamo, UUID> {
 
     boolean existsByCita_IdAndEstadoIn(UUID citaId, Collection<EstadoReclamo> estados);
 
+    /** Reclamos sin resolver que están asociados a una cita (para revisar si venció el plazo de respuesta). */
+    @Query("select r from Reclamo r join fetch r.usuario join fetch r.cita c join fetch c.paciente "
+            + "join fetch c.odontologo o join fetch o.usuario left join fetch c.servicio where r.estado in :estados")
+    List<Reclamo> conCitaEnEstados(@Param("estados") Collection<EstadoReclamo> estados);
+
     long countByUsuario_IdAndEstadoIn(UUID usuarioId, Collection<EstadoReclamo> estados);
 
     @Query("select r from Reclamo r join fetch r.usuario left join fetch r.cita c left join fetch c.odontologo o "

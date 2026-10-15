@@ -31,6 +31,7 @@ import java.util.UUID;
  *   <li>El odontólogo de esa cita la revisa y decide.</li>
  *   <li>Si la aprueba: se le quita un strike al paciente (si estaba BLOQUEADO puede volver a reservar)
  *       y se le devuelve el depósito. Si la rechaza, todo queda igual.</li>
+ *   <li>Si no la revisa en 7 días, se aprueba sola: el paciente presentó su prueba y nadie la objetó.</li>
  * </ol>
  * La cita sigue como INASISTENCIA_PENALIZADA en ambos casos: es lo que pasó; la apelación queda como el registro.
  */
@@ -38,6 +39,8 @@ import java.util.UUID;
 public class ApelacionService {
 
     static final Duration PLAZO_PARA_APELAR = Duration.ofDays(7);
+    /** Tiempo que tiene el odontólogo para revisar una apelación antes de que se apruebe sola. */
+    public static final Duration PLAZO_PARA_REVISAR = Duration.ofDays(7);
 
     private final ApelacionRepository apelacionRepository;
     private final CitaRepository citaRepository;
@@ -122,14 +125,38 @@ public class ApelacionService {
 
         UUID pacienteId = apelacion.getCita().getPaciente().getId();
         if (aprobar) {
-            reputacion.quitarStrike(pacienteId);
-            reembolsoService.reembolsarDeposito(apelacion.getCita().getId(), "apelacion:" + apelacion.getCita().getId(),
-                    "Apelación aprobada: inasistencia justificada");
+            darLaRazonAlPaciente(apelacion, "Apelación aprobada: inasistencia justificada");
         }
         return aRespuesta(apelacion, strikesDe(pacienteId));
     }
 
+    /**
+     * Tarea programada: las apelaciones que el odontólogo no revisó en PLAZO_PARA_REVISAR se aprueban solas
+     * (−1 strike y devolución del depósito). Así nadie se queda con un strike sin que lo escuchen.
+     */
+    @Transactional
+    public int aprobarSinRevisar() {
+        OffsetDateTime ahora = OffsetDateTime.now(clock);
+        List<Apelacion> vencidas = apelacionRepository.sinRevisarDesde(EstadoApelacion.PENDIENTE,
+                ahora.minus(PLAZO_PARA_REVISAR));
+        for (Apelacion a : vencidas) {
+            a.setEstado(EstadoApelacion.APROBADA);
+            a.setNotaResolucion("Aprobada automáticamente: el odontólogo no la revisó en "
+                    + PLAZO_PARA_REVISAR.toDays() + " días");
+            a.setResueltoEn(ahora);
+            apelacionRepository.saveAndFlush(a);
+            darLaRazonAlPaciente(a, "Apelación aprobada automáticamente: el odontólogo no respondió a tiempo");
+        }
+        return vencidas.size();
+    }
+
     // ------------------------------------------------------------------
+
+    private void darLaRazonAlPaciente(Apelacion a, String motivo) {
+        UUID citaId = a.getCita().getId();
+        reputacion.quitarStrike(a.getCita().getPaciente().getId());
+        reembolsoService.reembolsarDeposito(citaId, "apelacion:" + citaId, motivo);
+    }
 
     private Short strikesDe(UUID pacienteId) {
         return reputacion.strikesDe(pacienteId);
