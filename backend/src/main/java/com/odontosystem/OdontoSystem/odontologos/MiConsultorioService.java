@@ -1,6 +1,9 @@
 package com.odontosystem.OdontoSystem.odontologos;
 
+import com.odontosystem.OdontoSystem.citas.CitaService;
 import com.odontosystem.OdontoSystem.entity.BloqueoAgenda;
+import com.odontosystem.OdontoSystem.entity.Cita;
+import com.odontosystem.OdontoSystem.entity.EstadoCita;
 import com.odontosystem.OdontoSystem.entity.CategoriaServicio;
 import com.odontosystem.OdontoSystem.entity.HorarioAtencion;
 import com.odontosystem.OdontoSystem.entity.PerfilOdontologo;
@@ -12,6 +15,7 @@ import com.odontosystem.OdontoSystem.odontologos.OdontologoDtos.ServicioRequest;
 import com.odontosystem.OdontoSystem.odontologos.OdontologoDtos.ServicioResponse;
 import com.odontosystem.OdontoSystem.repository.BloqueoAgendaRepository;
 import com.odontosystem.OdontoSystem.repository.CategoriaServicioRepository;
+import com.odontosystem.OdontoSystem.repository.CitaRepository;
 import com.odontosystem.OdontoSystem.repository.HorarioAtencionRepository;
 import com.odontosystem.OdontoSystem.repository.PerfilOdontologoRepository;
 import com.odontosystem.OdontoSystem.repository.ServicioRepository;
@@ -35,6 +39,8 @@ import java.util.UUID;
 public class MiConsultorioService {
 
     static final Duration BLOQUEO_MAXIMO = Duration.ofDays(60);
+    static final List<EstadoCita> CITAS_ACTIVAS =
+            List.of(EstadoCita.PENDIENTE_PAGO, EstadoCita.PENDIENTE_CONFIRMACION, EstadoCita.CONFIRMADA);
 
     private final PerfilOdontologoRepository perfilRepository;
     private final ServicioRepository servicioRepository;
@@ -42,6 +48,9 @@ public class MiConsultorioService {
     private final HorarioAtencionRepository horarioRepository;
     private final BloqueoAgendaRepository bloqueoRepository;
     private final EntityManager entityManager;
+    /** RF07: al bloquear, las citas ya reservadas en ese rango se cancelan con reembolso del 100 %. */
+    private final CitaRepository citaRepository;
+    private final CitaService citaService;
 
     // ------------------------------------------------------------------
     // Servicios (RF04)
@@ -166,13 +175,23 @@ public class MiConsultorioService {
         if (Duration.between(req.inicio(), req.fin()).compareTo(BLOQUEO_MAXIMO) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Un bloqueo puede durar como máximo 60 días");
         }
+        // Primero se cancelan las citas reservadas en ese rango (la BD no deja una cita activa dentro de un bloqueo)
+        OffsetDateTime ahora = OffsetDateTime.now();
+        String motivo = Texto.limpiar(req.motivo());
+        String texto = "El odontólogo bloqueó su agenda en ese horario" + (motivo == null ? "" : ": " + motivo);
+        int canceladas = 0;
+        for (Cita cita : citaRepository.cruzadas(odontologoId, CITAS_ACTIVAS, req.inicio(), req.fin())) {
+            if (!cita.getInicioProgramado().isAfter(ahora)) continue; // ya empezó o pasó: no se toca
+            citaService.cancelar(odontologoId, cita.getId(), texto);
+            canceladas++;
+        }
         BloqueoAgenda bloqueo = bloqueoRepository.save(BloqueoAgenda.builder()
                 .odontologo(perfil)
                 .inicio(req.inicio())
                 .fin(req.fin())
-                .motivo(Texto.limpiar(req.motivo()))
+                .motivo(motivo)
                 .build());
-        return aBloqueo(bloqueo);
+        return aBloqueo(bloqueo, canceladas);
     }
 
     @Transactional
@@ -202,6 +221,10 @@ public class MiConsultorioService {
     }
 
     private static BloqueoResponse aBloqueo(BloqueoAgenda b) {
-        return new BloqueoResponse(b.getId(), b.getInicio(), b.getFin(), b.getMotivo());
+        return aBloqueo(b, 0);
+    }
+
+    private static BloqueoResponse aBloqueo(BloqueoAgenda b, int citasCanceladas) {
+        return new BloqueoResponse(b.getId(), b.getInicio(), b.getFin(), b.getMotivo(), citasCanceladas);
     }
 }

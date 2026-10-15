@@ -137,5 +137,6 @@ public final class OdontologoDtos {
                                  @NotNull OffsetDateTime fin,
                                  @Size(max = 150) String motivo) {}
 
-    public record BloqueoResponse(UUID id, OffsetDateTime inicio, OffsetDateTime fin, String motivo) {}
+    /** citas_canceladas: citas que ya estaban reservadas en ese rango y se cancelaron con reembolso (solo al crear). */
+    public record BloqueoResponse(UUID id, OffsetDateTime inicio, OffsetDateTime fin, String motivo, int citasCanceladas) {}
 }

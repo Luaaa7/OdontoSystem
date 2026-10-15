@@ -98,7 +98,9 @@ public class MiConsultorioController {
         return consultorioService.listarBloqueos(id(principal));
     }
 
-    @Operation(summary = "Bloquear agenda", description = "Fechas con zona horaria, ej. 2026-10-20T09:00:00-05:00. Máximo 60 días.")
+    @Operation(summary = "Bloquear agenda", description = "Fechas con zona horaria, ej. 2026-10-20T09:00:00-05:00. Máximo 60 días. "
+            + "Las citas ya reservadas en ese rango se cancelan con reembolso del 100 % y cada paciente recibe un correo "
+            + "(citas_canceladas dice cuántas).")
     @PostMapping("/bloqueos")
     @ResponseStatus(HttpStatus.CREATED)
     public BloqueoResponse crearBloqueo(@AuthenticationPrincipal UsuarioPrincipal principal,

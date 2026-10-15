@@ -44,6 +44,8 @@ class MiConsultorioServiceTest {
     @Mock private CategoriaServicioRepository categoriaRepository;
     @Mock private HorarioAtencionRepository horarioRepository;
     @Mock private BloqueoAgendaRepository bloqueoRepository;
+    @Mock private com.odontosystem.OdontoSystem.repository.CitaRepository citaRepository;
+    @Mock private com.odontosystem.OdontoSystem.citas.CitaService citaService;
     @Mock private EntityManager entityManager;
 
     private MiConsultorioService servicio;
@@ -53,7 +55,7 @@ class MiConsultorioServiceTest {
     @BeforeEach
     void setUp() {
         servicio = new MiConsultorioService(perfilRepository, servicioRepository, categoriaRepository,
-                horarioRepository, bloqueoRepository, entityManager);
+                horarioRepository, bloqueoRepository, entityManager, citaRepository, citaService);
     }
 
     private static int estado(Throwable e) {
@@ -122,5 +124,27 @@ class MiConsultorioServiceTest {
         assertThatThrownBy(() -> servicio.crearBloqueo(odontologoId, new BloqueoRequest(manana, manana.plusDays(90), null)))
                 .satisfies(e -> assertThat(estado(e)).isEqualTo(400));
         verify(bloqueoRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("RF07: bloquear un rango con citas reservadas las cancela (con reembolso) antes de guardar el bloqueo")
+    void bloqueoCancelaCitas() {
+        org.mockito.Mockito.when(perfilRepository.findById(odontologoId)).thenReturn(java.util.Optional.of(perfil));
+        java.time.OffsetDateTime manana = java.time.OffsetDateTime.now().plusDays(1);
+        com.odontosystem.OdontoSystem.entity.Cita reservada = com.odontosystem.OdontoSystem.entity.Cita.builder()
+                .id(UUID.randomUUID()).inicioProgramado(manana.plusHours(1)).finProgramado(manana.plusHours(2)).build();
+        org.mockito.Mockito.when(citaRepository.cruzadas(org.mockito.ArgumentMatchers.eq(odontologoId),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.List.of(reservada));
+        org.mockito.Mockito.when(bloqueoRepository.save(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(i -> i.getArgument(0));
+
+        var r = servicio.crearBloqueo(odontologoId, new BloqueoRequest(manana, manana.plusHours(4), "Congreso"));
+
+        assertThat(r.citasCanceladas()).isEqualTo(1);
+        var orden = org.mockito.Mockito.inOrder(citaService, bloqueoRepository);
+        orden.verify(citaService).cancelar(org.mockito.ArgumentMatchers.eq(odontologoId),
+                org.mockito.ArgumentMatchers.eq(reservada.getId()), org.mockito.ArgumentMatchers.contains("Congreso"));
+        orden.verify(bloqueoRepository).save(org.mockito.ArgumentMatchers.any());
     }
 }
