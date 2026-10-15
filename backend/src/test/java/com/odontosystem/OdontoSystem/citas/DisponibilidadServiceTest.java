@@ -53,6 +53,7 @@ class DisponibilidadServiceTest {
     @Mock private HorarioAtencionRepository horarioRepository;
     @Mock private CitaRepository citaRepository;
     @Mock private BloqueoAgendaRepository bloqueoRepository;
+    @Mock private com.odontosystem.OdontoSystem.repository.ConfirmacionAgendaRepository confirmacionRepository;
 
     private DisponibilidadService servicio;
     private final UUID odontologoId = UUID.randomUUID();
@@ -63,13 +64,15 @@ class DisponibilidadServiceTest {
     void setUp() {
         Clock reloj = Clock.fixed(Instant.parse("2026-10-19T13:00:00Z"), ZoneOffset.UTC);
         servicio = new DisponibilidadService(perfilRepository, servicioRepository, horarioRepository,
-                citaRepository, bloqueoRepository, reloj);
+                citaRepository, bloqueoRepository, confirmacionRepository, reloj);
         perfil = PerfilOdontologo.builder().usuarioId(odontologoId)
                 .usuario(Usuario.builder().id(odontologoId).nombreCompleto("Ana").build())
                 .estadoVerificacion(EstadoVerificacionOdontologo.VERIFICADO).build();
         limpieza = Servicio.builder().id(UUID.randomUUID()).odontologo(perfil).titulo("Limpieza")
                 .precioTotal(new BigDecimal("80.00")).duracionMinutos((short) 60).build();
 
+        // El odontólogo confirmó que atiende hoy (lunes)
+        lenient().when(confirmacionRepository.existsByOdontologoIdAndFechaAndAtiendeTrue(odontologoId, LUNES)).thenReturn(true);
         // Lunes 09:00-12:00 cada 30 min; martes 15:00-18:00
         lenient().when(horarioRepository.findByOdontologo_UsuarioIdOrderByDiaSemanaAscHoraInicioAsc(odontologoId)).thenReturn(List.of(
                 horario(DiaSemana.LUNES, 9, 12), horario(DiaSemana.MARTES, 15, 18)));
@@ -117,7 +120,7 @@ class DisponibilidadServiceTest {
         assertThat(servicio.turnosLibres(perfil, limpieza, LocalDate.of(2026, 10, 21))).isEmpty(); // miércoles
         Clock tarde = Clock.fixed(Instant.parse("2026-10-19T15:15:00Z"), ZoneOffset.UTC); // 10:15 en Lima
         var conReloj = new DisponibilidadService(perfilRepository, servicioRepository, horarioRepository,
-                citaRepository, bloqueoRepository, tarde);
+                citaRepository, bloqueoRepository, confirmacionRepository, tarde);
         assertThat(horas(conReloj.turnosLibres(perfil, limpieza, LUNES))).containsExactly("10:30", "11:00");
     }
 
@@ -134,5 +137,13 @@ class DisponibilidadServiceTest {
         perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.PENDIENTE);
         assertThatThrownBy(() -> servicio.disponibilidad(odontologoId, limpieza.getId(), LUNES))
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test
+    @DisplayName("Si el odontólogo no confirmó que atiende hoy, no hay turnos para hoy (mañana sí)")
+    void sinConfirmarHoy() {
+        when(confirmacionRepository.existsByOdontologoIdAndFechaAndAtiendeTrue(odontologoId, LUNES)).thenReturn(false);
+        assertThat(servicio.turnosLibres(perfil, limpieza, LUNES)).isEmpty();
+        assertThat(servicio.turnosLibres(perfil, limpieza, LUNES.plusDays(1))).isNotEmpty();
     }
 }

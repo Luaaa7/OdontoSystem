@@ -20,6 +20,7 @@ public interface PerfilOdontologoRepository extends JpaRepository<PerfilOdontolo
 
     /** Perfiles que pueden mostrarse en el buscador: activos, con cuenta activa y el estado indicado (VERIFICADO). */
     @Query("select distinct p from PerfilOdontologo p join fetch p.usuario u left join fetch p.especialidades "
-            + "where p.desactivadoEn is null and u.estaActivo = true and p.estadoVerificacion = :estado")
+            + "where p.desactivadoEn is null and u.estaActivo = true and p.estadoVerificacion = :estado "
+            + "and (p.suspendidoHasta is null or p.suspendidoHasta < current_timestamp)")
     List<PerfilOdontologo> buscarPublicables(@Param("estado") EstadoVerificacionOdontologo estado);
-}
+}

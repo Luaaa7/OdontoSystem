@@ -249,8 +249,9 @@ public class CitaService {
 
     // ------------------------------------------------------------------
 
+    /** actorId null = lo hizo el sistema (tarea programada); la bitácora queda sin usuario. */
     CitaResponse cambiarEstado(Cita cita, UUID actorId, EstadoCita nuevo, String motivo) {
-        fijarActor(actorId);
+        if (actorId != null) fijarActor(actorId);
         EstadoCita anterior = cita.getEstado();
         cita.setEstado(nuevo);
         if (nuevo == EstadoCita.CANCELADA_CON_REEMBOLSO || nuevo == EstadoCita.CANCELADA_SIN_REEMBOLSO) {

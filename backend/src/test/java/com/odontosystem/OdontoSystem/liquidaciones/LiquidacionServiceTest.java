@@ -55,13 +55,14 @@ class LiquidacionServiceTest {
     @Mock private ReclamoRepository reclamos;
     @Mock private ApelacionRepository apelaciones;
     @Mock private ParametrosSistema parametros;
+    @Mock private com.odontosystem.OdontoSystem.repository.ReporteAusenciaRepository reportes;
 
     private LiquidacionService servicio;
     private PerfilOdontologo odontologo;
 
     @BeforeEach
     void setUp() {
-        servicio = new LiquidacionService(liquidaciones, pagos, reclamos, apelaciones, parametros,
+        servicio = new LiquidacionService(liquidaciones, pagos, reclamos, apelaciones, reportes, parametros,
                 Clock.fixed(AHORA, ZoneOffset.UTC));
         UUID id = UUID.randomUUID();
         odontologo = PerfilOdontologo.builder().usuarioId(id).usuario(Usuario.builder().id(id).build()).build();

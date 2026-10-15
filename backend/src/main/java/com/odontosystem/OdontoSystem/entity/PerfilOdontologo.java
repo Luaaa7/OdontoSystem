@@ -95,6 +95,10 @@ public class PerfilOdontologo {
     @Column(name = "desactivado_en")
     private OffsetDateTime desactivadoEn;
 
+    /** Suspensión por faltas (3 ausencias confirmadas en 90 días): hasta esta fecha no recibe reservas. */
+    @Column(name = "suspendido_hasta")
+    private OffsetDateTime suspendidoHasta;
+
     @Column(name = "creado_en", nullable = false, updatable = false)
     private OffsetDateTime creadoEn;
 
@@ -126,4 +130,4 @@ public class PerfilOdontologo {
         if (creadoEn == null) creadoEn = ahora;
         if (actualizadoEn == null) actualizadoEn = ahora;
     }
-}
+}

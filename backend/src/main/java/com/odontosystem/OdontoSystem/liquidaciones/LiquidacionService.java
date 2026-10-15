@@ -13,6 +13,8 @@ import com.odontosystem.OdontoSystem.repository.ApelacionRepository;
 import com.odontosystem.OdontoSystem.repository.LiquidacionRepository;
 import com.odontosystem.OdontoSystem.repository.PagoRepository;
 import com.odontosystem.OdontoSystem.repository.ReclamoRepository;
+import com.odontosystem.OdontoSystem.repository.ReporteAusenciaRepository;
+import com.odontosystem.OdontoSystem.entity.EstadoReporteAusencia;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,7 +35,8 @@ import java.util.UUID;
  *       CANCELADA_SIN_REEMBOLSO (canceló con menos de 12 h): compensa el turno que reservó.</li>
  *   <li>Se paga HORAS_RETENCION_LIQUIDACION (72 h) después del fin de la cita; en una inasistencia se espera
  *       además a que venza el plazo de apelación (7 días).</li>
- *   <li>Si el paciente tiene un reclamo abierto o una apelación pendiente sobre esa cita, el pago se retiene.</li>
+ *   <li>Si el paciente tiene un reclamo abierto, una apelación pendiente o un reporte de ausencia en revisión sobre
+ *       esa cita, el pago se retiene.</li>
  *   <li>Si el depósito termina devuelto al paciente (apelación aprobada, el odontólogo lo devuelve al atender un
  *       reclamo), la liquidación pasa a CANCELADA.</li>
  * </ul>
@@ -63,6 +66,7 @@ public class LiquidacionService {
     private final PagoRepository pagoRepository;
     private final ReclamoRepository reclamoRepository;
     private final ApelacionRepository apelacionRepository;
+    private final ReporteAusenciaRepository reporteRepository;
     private final ParametrosSistema parametros;
     private final Clock clock;
 
@@ -145,6 +149,9 @@ public class LiquidacionService {
         }
         if (apelacionRepository.existsByCita_IdAndEstado(c.getId(), EstadoApelacion.PENDIENTE)) {
             return "Apelación del paciente pendiente";
+        }
+        if (reporteRepository.existsByCita_IdAndEstado(c.getId(), EstadoReporteAusencia.PENDIENTE)) {
+            return "El paciente reportó que no lo atendiste (en revisión)";
         }
         return null;
     }

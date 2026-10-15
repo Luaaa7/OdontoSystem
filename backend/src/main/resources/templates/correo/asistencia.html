@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head><meta charset="UTF-8"><title>Tu agenda</title></head>
+<body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f7;padding:24px 12px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr><td style="background:#0f766e;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:bold;">OdontoSystem · Tu agenda</td></tr>
+      <tr><td style="padding:24px;">
+        <p style="font-size:18px;margin:0 0 12px;">Hola <span th:text="${nombre}">Dra. Ana</span>,</p>
+
+        <div th:if="${caso == 'agenda'}">
+          <p style="margin:0 0 16px;line-height:1.5;">
+            Hoy tienes <strong th:text="${citas}">4</strong> cita(s); la primera es a las
+            <strong th:text="${hora}">09:00</strong>. <strong>¿Atiendes hoy?</strong>
+          </p>
+          <p style="margin:0 0 16px;line-height:1.5;">
+            Confírmalo desde tu panel. Mientras no confirmes, los pacientes no podrán reservar contigo para hoy.
+            Si no puedes atender, indícalo y tus pacientes recibirán el 100 % de su depósito.
+          </p>
+        </div>
+
+        <div th:if="${caso == 'reporte'}">
+          <p style="margin:0 0 16px;line-height:1.5;">
+            <span th:text="${paciente}">Lucía Ramos</span> reportó que <strong>no la atendiste</strong> en su cita de
+            <span th:text="${servicio}">Limpieza</span> del <span th:text="${fecha}">lunes 19 de octubre a las 10:00</span>.
+          </p>
+          <p style="margin:0 0 16px;line-height:1.5;">
+            Respóndelo desde tu panel antes del <strong th:text="${limite}">miércoles 21 de octubre a las 10:30</strong>.
+            Si la atendiste, registra la historia clínica de esa cita como prueba. Si no respondes a tiempo,
+            se le devolverá el depósito y se te registrará una falta.
+          </p>
+        </div>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;color:#7b8794;font-size:12px;">
+        Este es un mensaje automático de OdontoSystem (Ica). No respondas a este correo.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

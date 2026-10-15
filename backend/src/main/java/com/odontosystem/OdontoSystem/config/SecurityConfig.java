@@ -79,7 +79,7 @@ public class SecurityConfig {
                                 "/api/odontologos/*/disponibilidad", "/api/odontologos/*/resenas", "/api/catalogos/**").permitAll()
                         // Solo un paciente reserva
                         .requestMatchers(HttpMethod.POST, "/api/citas", "/api/citas/*/pagar", "/api/citas/*/resena",
-                                "/api/citas/*/apelacion").hasRole("PACIENTE")
+                                "/api/citas/*/apelacion", "/api/citas/*/asistencia").hasRole("PACIENTE")
                         // Reseñas: solo el paciente califica y ve sus citas por calificar
                         .requestMatchers(HttpMethod.PATCH, "/api/citas/*/resena").hasRole("PACIENTE")
                         .requestMatchers(HttpMethod.GET, "/api/citas/por-resenar").hasRole("PACIENTE")
@@ -101,4 +101,4 @@ public class SecurityConfig {
 
         return http.build();
     }
-}
+}

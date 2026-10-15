@@ -12,6 +12,7 @@ import com.odontosystem.OdontoSystem.entity.PerfilOdontologo;
 import com.odontosystem.OdontoSystem.entity.Servicio;
 import com.odontosystem.OdontoSystem.repository.BloqueoAgendaRepository;
 import com.odontosystem.OdontoSystem.repository.CitaRepository;
+import com.odontosystem.OdontoSystem.repository.ConfirmacionAgendaRepository;
 import com.odontosystem.OdontoSystem.repository.HorarioAtencionRepository;
 import com.odontosystem.OdontoSystem.repository.PerfilOdontologoRepository;
 import com.odontosystem.OdontoSystem.repository.ServicioRepository;
@@ -35,6 +36,7 @@ import java.util.UUID;
  * Turnos libres de un odontólogo para un servicio en un día (RF06).
  * Turnos = horario semanal de ese día, cortado cada intervalo_minutos, con la duración del servicio;
  * se quitan los que ya pasaron, los que se cruzan con una cita activa y los que caen en un bloqueo.
+ * Para el mismo día solo hay turnos si el odontólogo confirmó esa mañana que atiende (AgendaDiariaService).
  */
 @Service
 @RequiredArgsConstructor
@@ -49,6 +51,7 @@ public class DisponibilidadService {
     private final HorarioAtencionRepository horarioRepository;
     private final CitaRepository citaRepository;
     private final BloqueoAgendaRepository bloqueoRepository;
+    private final ConfirmacionAgendaRepository confirmacionRepository;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -72,6 +75,10 @@ public class DisponibilidadService {
         UUID odontologoId = perfil.getUsuarioId();
         DiaSemana dia = DiaSemana.values()[fecha.getDayOfWeek().getValue() - 1];
         Duration duracion = Duration.ofMinutes(servicio.getDuracionMinutos());
+        if (fecha.equals(LocalDate.now(clock.withZone(zona)))
+                && !confirmacionRepository.existsByOdontologoIdAndFechaAndAtiendeTrue(odontologoId, fecha)) {
+            return List.of(); // no confirmó que atiende hoy: no se reserva para hoy
+        }
 
         OffsetDateTime inicioDia = fecha.atStartOfDay(zona).toOffsetDateTime();
         OffsetDateTime finDia = fecha.plusDays(1).atStartOfDay(zona).toOffsetDateTime();
@@ -108,6 +115,7 @@ public class DisponibilidadService {
         return perfilRepository.findById(odontologoId)
                 .filter(p -> p.getDesactivadoEn() == null
                         && p.getEstadoVerificacion() == EstadoVerificacionOdontologo.VERIFICADO
+                        && (p.getSuspendidoHasta() == null || p.getSuspendidoHasta().isBefore(OffsetDateTime.now(clock)))
                         && Boolean.TRUE.equals(p.getUsuario().getEstaActivo()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Odontólogo no encontrado"));
     }

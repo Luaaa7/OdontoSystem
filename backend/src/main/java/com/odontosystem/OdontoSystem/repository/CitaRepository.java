@@ -53,5 +53,17 @@ public interface CitaRepository extends JpaRepository<Cita, UUID> {
 
     long countByPaciente_IdAndEstado(UUID pacienteId, EstadoCita estado);
 
+    /** Citas en esos estados que empiezan en el rango, con el odontólogo (para el aviso diario de agenda). */
+    @Query("select c from Cita c join fetch c.odontologo o join fetch o.usuario where c.estado in :estados "
+            + "and c.inicioProgramado >= :desde and c.inicioProgramado < :hasta order by c.inicioProgramado asc")
+    List<Cita> empiezanEntre(@Param("estados") Collection<EstadoCita> estados,
+                             @Param("desde") OffsetDateTime desde,
+                             @Param("hasta") OffsetDateTime hasta);
+
+    /** Citas en ese estado que terminaron antes del límite y que nadie reportó (para cerrarlas solas). */
+    @Query("select c from Cita c join fetch c.paciente where c.estado = :estado and c.finProgramado < :limite "
+            + "and not exists (select r.id from ReporteAusencia r where r.cita = c)")
+    List<Cita> terminadasSinReporte(@Param("estado") EstadoCita estado, @Param("limite") OffsetDateTime limite);
+
     List<Cita> findByEstadoAndCreadoEnBefore(EstadoCita estado, OffsetDateTime limite);
 }
