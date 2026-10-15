@@ -30,7 +30,7 @@ public class ColegioOdontologicoVerificacionService {
                 }
 
                 String copEncontrado = celdas.get(0).text().trim();
-                if (!copEncontrado.equals(numeroColegiatura.trim())) {
+                if (!mismoNumero(copEncontrado, numeroColegiatura)) {
                     continue;
                 }
 
@@ -47,6 +47,21 @@ public class ColegioOdontologicoVerificacionService {
         }
     }
 
+    /**
+     * El buscador muestra el COP con ceros a la izquierda (el 1000 aparece como "01000"), así que se comparan
+     * solo los dígitos y sin esos ceros.
+     */
+    static boolean mismoNumero(String encontrado, String buscado) {
+        String a = soloDigitos(encontrado);
+        String b = soloDigitos(buscado);
+        return !a.isEmpty() && a.equals(b);
+    }
+
+    private static String soloDigitos(String texto) {
+        if (texto == null) return "";
+        return texto.replaceAll("\\D", "").replaceFirst("^0+(?=\\d)", "");
+    }
+
     public enum EstadoVerificacionCop {
         VERIFICADO_IDENTIDAD,
         NO_ENCONTRADO,
@@ -54,4 +69,4 @@ public class ColegioOdontologicoVerificacionService {
     }
 
     public record ResultadoVerificacionCop(EstadoVerificacionCop estado, String nombreEncontrado, String region) {}
-}
+}
