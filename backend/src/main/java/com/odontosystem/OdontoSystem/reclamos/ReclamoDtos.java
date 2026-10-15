@@ -25,11 +25,15 @@ public final class ReclamoDtos {
                                  String descripcion,
                                  UUID citaId) {}
 
-    /** El odontólogo responde; con resuelto=true el reclamo pasa a RESUELTO, si no queda EN_PROCESO. */
+    /**
+     * El odontólogo responde; con resuelto=true el reclamo pasa a RESUELTO, si no queda EN_PROCESO.
+     * Con devolver_deposito=true le devuelve al paciente el depósito de esa cita (si aún no se le pagó a él).
+     */
     public record RespuestaRequest(@NotBlank(message = "Escribe la respuesta")
                                    @Size(max = 4000, message = "La respuesta no puede superar los 4000 caracteres")
                                    String respuesta,
-                                   boolean resuelto) {}
+                                   boolean resuelto,
+                                   Boolean devolverDeposito) {}
 
     /**
      * @param codigo         número que se le muestra al usuario para hacer seguimiento (REC-XXXXXXXX)

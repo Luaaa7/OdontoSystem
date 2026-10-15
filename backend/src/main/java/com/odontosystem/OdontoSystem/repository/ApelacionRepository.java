@@ -14,6 +14,8 @@ public interface ApelacionRepository extends JpaRepository<Apelacion, UUID> {
 
     boolean existsByCita_Id(UUID citaId);
 
+    boolean existsByCita_IdAndEstado(UUID citaId, EstadoApelacion estado);
+
     Optional<Apelacion> findByCita_Id(UUID citaId);
 
     /** Apelaciones sobre citas de ese odontólogo, las más antiguas primero. */

@@ -53,6 +53,8 @@ class ReclamoServiceTest {
     @Mock private CitaRepository citas;
     @Mock private UsuarioRepository usuarios;
     @Mock private ApplicationEventPublisher eventos;
+    @Mock private com.odontosystem.OdontoSystem.citas.ReembolsoService reembolsos;
+    @Mock private com.odontosystem.OdontoSystem.liquidaciones.LiquidacionService liquidaciones;
 
     private ReclamoService servicio;
     private Usuario paciente;
@@ -61,7 +63,7 @@ class ReclamoServiceTest {
 
     @BeforeEach
     void setUp() {
-        servicio = new ReclamoService(reclamos, citas, usuarios, eventos, Clock.fixed(AHORA, ZoneOffset.UTC));
+        servicio = new ReclamoService(reclamos, citas, usuarios, eventos, Clock.fixed(AHORA, ZoneOffset.UTC), reembolsos, liquidaciones);
         paciente = Usuario.builder().id(UUID.randomUUID()).nombreCompleto("Lucía Ramos Peña").correo("lucia@correo.pe").build();
         usuarioOdontologo = Usuario.builder().id(UUID.randomUUID()).nombreCompleto("Dra. Ana Torres").build();
         odontologo = PerfilOdontologo.builder().usuarioId(usuarioOdontologo.getId()).usuario(usuarioOdontologo).build();
@@ -156,7 +158,7 @@ class ReclamoServiceTest {
         Reclamo r = guardado(paciente, cita(), EstadoReclamo.ABIERTO);
 
         ReclamoResponse resp = servicio.responder(usuarioOdontologo.getId(), r.getId(),
-                new RespuestaRequest("  Disculpa la demora, te descontamos el depósito ", true));
+                new RespuestaRequest("  Disculpa la demora, te descontamos el depósito ", true, null));
 
         assertThat(resp.estado()).isEqualTo(EstadoReclamo.RESUELTO);
         assertThat(resp.respuesta()).isEqualTo("Disculpa la demora, te descontamos el depósito");
@@ -170,11 +172,11 @@ class ReclamoServiceTest {
     @DisplayName("Responder sin resolver lo deja EN_PROCESO; uno resuelto ya no se responde (409)")
     void enProcesoYLuegoNoSeRepite() {
         Reclamo r = guardado(paciente, cita(), EstadoReclamo.ABIERTO);
-        assertThat(servicio.responder(usuarioOdontologo.getId(), r.getId(), new RespuestaRequest("Lo reviso", false))
+        assertThat(servicio.responder(usuarioOdontologo.getId(), r.getId(), new RespuestaRequest("Lo reviso", false, null))
                 .estado()).isEqualTo(EstadoReclamo.EN_PROCESO);
 
         r.setEstado(EstadoReclamo.RESUELTO);
-        assertThatThrownBy(() -> servicio.responder(usuarioOdontologo.getId(), r.getId(), new RespuestaRequest("x", true)))
+        assertThatThrownBy(() -> servicio.responder(usuarioOdontologo.getId(), r.getId(), new RespuestaRequest("x", true, null)))
                 .satisfies(e -> assertThat(estado(e)).isEqualTo(409));
     }
 
@@ -183,7 +185,7 @@ class ReclamoServiceTest {
     void otroOdontologoNo() {
         Reclamo r = guardado(paciente, cita(), EstadoReclamo.ABIERTO);
         UUID otro = UUID.randomUUID();
-        assertThatThrownBy(() -> servicio.responder(otro, r.getId(), new RespuestaRequest("x", true)))
+        assertThatThrownBy(() -> servicio.responder(otro, r.getId(), new RespuestaRequest("x", true, null)))
                 .satisfies(e -> assertThat(estado(e)).isEqualTo(404));
         assertThatThrownBy(() -> servicio.detalle(otro, r.getId()))
                 .satisfies(e -> assertThat(estado(e)).isEqualTo(404));
@@ -221,5 +223,35 @@ class ReclamoServiceTest {
         assertThat(ReclamoService.sumarDiasHabiles(LocalDate.of(2026, 10, 16), 1)).isEqualTo(LocalDate.of(2026, 10, 19));
         // lunes 12/10 + 15 hábiles = lunes 2/11
         assertThat(ReclamoService.sumarDiasHabiles(LocalDate.of(2026, 10, 12), 15)).isEqualTo(LocalDate.of(2026, 11, 2));
+    }
+
+    @Test
+    @DisplayName("El odontólogo da la razón y devuelve el depósito: reembolso y liquidación cancelada")
+    void devolverDeposito() {
+        Cita c = cita();
+        Reclamo r = guardado(paciente, c, EstadoReclamo.ABIERTO);
+        when(reembolsos.reembolsarDeposito(eq(c.getId()), eq("reclamo:" + r.getId()), any()))
+                .thenReturn(Optional.of(new com.odontosystem.OdontoSystem.citas.ReembolsoService.ReembolsoResponse(
+                        UUID.randomUUID(), null, null, null, "sim_rfd_1", null, null, true)));
+
+        servicio.responder(usuarioOdontologo.getId(), r.getId(), new RespuestaRequest("Tienes razón", true, true));
+
+        verify(liquidaciones).cancelarDeCita(eq(c.getId()), any());
+    }
+
+    @Test
+    @DisplayName("No se puede devolver un depósito ya pagado al odontólogo, ni uno que nunca se pagó (409)")
+    void devolverDepositoImposible() {
+        Cita c = cita();
+        Reclamo r = guardado(paciente, c, EstadoReclamo.ABIERTO);
+        when(liquidaciones.yaPagada(c.getId())).thenReturn(true);
+        assertThatThrownBy(() -> servicio.responder(usuarioOdontologo.getId(), r.getId(),
+                new RespuestaRequest("Ok", true, true))).satisfies(e -> assertThat(estado(e)).isEqualTo(409));
+
+        when(liquidaciones.yaPagada(c.getId())).thenReturn(false);
+        when(reembolsos.reembolsarDeposito(any(), any(), any())).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> servicio.responder(usuarioOdontologo.getId(), r.getId(),
+                new RespuestaRequest("Ok", true, true))).satisfies(e -> assertThat(estado(e)).isEqualTo(409));
+        verify(liquidaciones, never()).cancelarDeCita(any(), any());
     }
 }

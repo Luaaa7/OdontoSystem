@@ -1,9 +1,11 @@
 package com.odontosystem.OdontoSystem.reclamos;
 
+import com.odontosystem.OdontoSystem.citas.ReembolsoService;
 import com.odontosystem.OdontoSystem.entity.Cita;
 import com.odontosystem.OdontoSystem.entity.EstadoReclamo;
 import com.odontosystem.OdontoSystem.entity.Reclamo;
 import com.odontosystem.OdontoSystem.entity.Usuario;
+import com.odontosystem.OdontoSystem.liquidaciones.LiquidacionService;
 import com.odontosystem.OdontoSystem.reclamos.ReclamoDtos.ReclamoRequest;
 import com.odontosystem.OdontoSystem.reclamos.ReclamoDtos.ReclamoResponse;
 import com.odontosystem.OdontoSystem.reclamos.ReclamoDtos.RespuestaRequest;
@@ -53,6 +55,9 @@ public class ReclamoService {
     private final UsuarioRepository usuarioRepository;
     private final ApplicationEventPublisher eventos;
     private final Clock clock;
+    /** Para devolver el depósito si el odontólogo da la razón al paciente. */
+    private final ReembolsoService reembolsos;
+    private final LiquidacionService liquidaciones;
 
     @Transactional
     public ReclamoResponse registrar(UUID usuarioId, ReclamoRequest req) {
@@ -127,6 +132,9 @@ public class ReclamoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Este reclamo ya está "
                     + r.getEstado().name().toLowerCase(Locale.ROOT) + "; no se puede volver a responder");
         }
+        if (Boolean.TRUE.equals(req.devolverDeposito())) {
+            devolverDeposito(r);
+        }
         r.setRespuesta(req.respuesta().strip());
         if (req.resuelto()) {
             r.setEstado(EstadoReclamo.RESUELTO);
@@ -140,6 +148,23 @@ public class ReclamoService {
     }
 
     // ------------------------------------------------------------------
+
+    /**
+     * Devuelve al paciente el depósito de la cita reclamada. Solo si la plataforma todavía lo tiene en custodia:
+     * mientras el reclamo está abierto no se le paga al odontólogo, así que normalmente es posible.
+     */
+    private void devolverDeposito(Reclamo r) {
+        UUID citaId = r.getCita().getId();
+        if (liquidaciones.yaPagada(citaId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El depósito de esta cita ya se te transfirió; no se puede devolver desde aquí");
+        }
+        String motivo = "Devuelto por el odontólogo al atender el reclamo " + codigo(r.getId());
+        if (reembolsos.reembolsarDeposito(citaId, "reclamo:" + r.getId(), motivo).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Esta cita no tiene un depósito pagado que devolver");
+        }
+        liquidaciones.cancelarDeCita(citaId, motivo);
+    }
 
     /** El odontólogo atiende el reclamo si lo hizo el paciente de una cita suya. */
     static boolean loAtiende(Reclamo r, UUID odontologoId) {

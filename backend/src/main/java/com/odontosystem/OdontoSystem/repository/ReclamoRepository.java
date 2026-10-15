@@ -13,6 +13,8 @@ import java.util.UUID;
 
 public interface ReclamoRepository extends JpaRepository<Reclamo, UUID> {
 
+    boolean existsByCita_IdAndEstadoIn(UUID citaId, Collection<EstadoReclamo> estados);
+
     long countByUsuario_IdAndEstadoIn(UUID usuarioId, Collection<EstadoReclamo> estados);
 
     @Query("select r from Reclamo r join fetch r.usuario left join fetch r.cita c left join fetch c.odontologo o "
