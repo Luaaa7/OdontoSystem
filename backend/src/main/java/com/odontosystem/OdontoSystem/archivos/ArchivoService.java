@@ -142,7 +142,7 @@ public class ArchivoService {
         }
         OffsetDateTime expiraEn = OffsetDateTime.now().plus(VIGENCIA_ENLACE);
         try {
-            String enlace = cliente().privateDownload(ref.publicId(), ref.formato(), ObjectUtils.asMap(
+            String enlace = cliente().privateDownload(ref.publicId(), ref.formato(), Map.<String, Object>of(
                     "type", ref.tipo(),
                     "resource_type", "image",
                     "expires_at", expiraEn.toEpochSecond()));
