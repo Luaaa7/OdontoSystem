@@ -21,30 +21,37 @@ public class ColegioOdontologicoVerificacionService {
                     .userAgent("Mozilla/5.0 (compatible; OdontoSystemVerificador/1.0)")
                     .post();
 
-            Elements filas = doc.select("table.lista tr");
-
-            for (Element fila : filas) {
-                Elements celdas = fila.select("td");
-                if (celdas.size() < 4) {
-                    continue; // fila de encabezado o fila oculta de paginación
-                }
-
-                String copEncontrado = celdas.get(0).text().trim();
-                if (!mismoNumero(copEncontrado, numeroColegiatura)) {
-                    continue;
-                }
-
-                String nombre = celdas.get(2).text().trim();
-                String region = celdas.get(3).text().trim();
-
-                return new ResultadoVerificacionCop(EstadoVerificacionCop.VERIFICADO_IDENTIDAD, nombre, region);
-            }
-
-            return new ResultadoVerificacionCop(EstadoVerificacionCop.NO_ENCONTRADO, null, null);
+            return leerResultado(doc, numeroColegiatura);
 
         } catch (IOException e) {
             return new ResultadoVerificacionCop(EstadoVerificacionCop.ERROR_VERIFICACION, null, null);
         }
+    }
+
+    /**
+     * Lee la tabla de resultados del buscador del COP (separado de la conexión para poder probarlo sin internet).
+     */
+    static ResultadoVerificacionCop leerResultado(Document doc, String numeroColegiatura) {
+        Elements filas = doc.select("table.lista tr");
+
+        for (Element fila : filas) {
+            Elements celdas = fila.select("td");
+            if (celdas.size() < 4) {
+                continue; // fila de encabezado o fila oculta de paginación
+            }
+
+            String copEncontrado = celdas.get(0).text().trim();
+            if (!mismoNumero(copEncontrado, numeroColegiatura)) {
+                continue;
+            }
+
+            String nombre = celdas.get(2).text().trim();
+            String region = celdas.get(3).text().trim();
+
+            return new ResultadoVerificacionCop(EstadoVerificacionCop.VERIFICADO_IDENTIDAD, nombre, region);
+        }
+
+        return new ResultadoVerificacionCop(EstadoVerificacionCop.NO_ENCONTRADO, null, null);
     }
 
     /**
