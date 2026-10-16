@@ -3,9 +3,14 @@ package com.odontosystem.OdontoSystem.controller;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.odontosystem.OdontoSystem.dto.AuthResponse;
 import com.odontosystem.OdontoSystem.dto.LoginRequest;
+import com.odontosystem.OdontoSystem.dto.RecuperarPasswordRequest;
 import com.odontosystem.OdontoSystem.dto.RefreshRequest;
 import com.odontosystem.OdontoSystem.dto.RegistroRequest;
+import com.odontosystem.OdontoSystem.dto.RestablecerPasswordRequest;
 import com.odontosystem.OdontoSystem.service.AuthService;
+import com.odontosystem.OdontoSystem.service.RecuperacionPasswordService;
+import com.odontosystem.OdontoSystem.service.TokenRefrescoService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -18,9 +23,14 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final TokenRefrescoService tokenRefrescoService;
+    private final RecuperacionPasswordService recuperacion;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, TokenRefrescoService tokenRefrescoService,
+                          RecuperacionPasswordService recuperacion) {
         this.authService = authService;
+        this.tokenRefrescoService = tokenRefrescoService;
+        this.recuperacion = recuperacion;
     }
 
     @PostMapping("/register")
@@ -39,5 +49,32 @@ public class AuthController {
     public ResponseEntity<AuthResponse> refrescar(@Valid @RequestBody RefreshRequest request, HttpServletRequest httpRequest) {
         AuthResponse response = authService.refrescar(request.refreshToken(), httpRequest);
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Cerrar sesión",
+            description = "Revoca el refresh token de este dispositivo. El access token deja de servir cuando vence (15 min), "
+                    + "así que el frontend debe borrarlo. Responde 204 aunque el token ya no exista.")
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody RefreshRequest request) {
+        tokenRefrescoService.revocar(request.refreshToken());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Olvidé mi contraseña: pedir código",
+            description = "Envía un código de 6 dígitos al correo (vale 15 min; uno cada 60 s). Responde 202 siempre, "
+                    + "exista o no la cuenta, para no revelar qué correos están registrados.")
+    @PostMapping("/recuperar-password")
+    public ResponseEntity<Void> recuperarPassword(@Valid @RequestBody RecuperarPasswordRequest request) {
+        recuperacion.solicitar(request.correo());
+        return ResponseEntity.accepted().build();
+    }
+
+    @Operation(summary = "Olvidé mi contraseña: cambiarla con el código",
+            description = "Cambia la contraseña y cierra todas las sesiones abiertas. 400 si el código es incorrecto o venció "
+                    + "(5 intentos como máximo por código).")
+    @PostMapping("/restablecer-password")
+    public ResponseEntity<Void> restablecerPassword(@Valid @RequestBody RestablecerPasswordRequest request) {
+        recuperacion.restablecer(request.correo(), request.codigo(), request.passwordNueva());
+        return ResponseEntity.noContent().build();
     }
 }

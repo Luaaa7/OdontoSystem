@@ -145,4 +145,33 @@ class TokenRefrescoServiceTest {
                 .revocado(revocado)
                 .build();
     }
+
+    @Test
+    @DisplayName("Cerrar sesión revoca el refresh token de ese dispositivo")
+    void logoutRevoca() {
+        String plano = "token-del-celular";
+        TokenRefresco t = TokenRefresco.builder().usuario(lucia).tokenHash(jwt.hashearToken(plano))
+                .fechaExpiracion(OffsetDateTime.now().plusDays(10)).build();
+        when(repositorio.findByTokenHash(jwt.hashearToken(plano))).thenReturn(Optional.of(t));
+
+        servicio.revocar(plano);
+
+        assertThat(t.isRevocado()).isTrue();
+        assertThat(t.getFechaRevocacion()).isNotNull();
+        verify(repositorio).save(t);
+    }
+
+    @Test
+    @DisplayName("Cerrar sesión con un token desconocido o ya revocado no falla ni guarda nada")
+    void logoutIdempotente() {
+        when(repositorio.findByTokenHash(anyString())).thenReturn(Optional.empty());
+        servicio.revocar("no-existe");
+
+        TokenRefresco revocado = TokenRefresco.builder().usuario(lucia).tokenHash(jwt.hashearToken("viejo"))
+                .fechaExpiracion(OffsetDateTime.now().plusDays(10)).revocado(true).build();
+        when(repositorio.findByTokenHash(jwt.hashearToken("viejo"))).thenReturn(Optional.of(revocado));
+        servicio.revocar("viejo");
+
+        verify(repositorio, never()).save(any(TokenRefresco.class));
+    }
 }

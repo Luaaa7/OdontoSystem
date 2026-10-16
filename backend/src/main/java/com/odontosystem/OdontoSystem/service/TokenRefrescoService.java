@@ -74,5 +74,17 @@ public class TokenRefrescoService {
         return new ResultadoRotacion(usuario, nuevoTokenPlano);
     }
 
+    /** Cierra la sesión de ese dispositivo: revoca su refresh token. Si no existe o ya estaba revocado, no hace nada. */
+    @Transactional
+    public void revocar(String tokenPlano) {
+        tokenRefrescoRepository.findByTokenHash(jwtService.hashearToken(tokenPlano))
+                .filter(t -> !t.isRevocado())
+                .ifPresent(t -> {
+                    t.setRevocado(true);
+                    t.setFechaRevocacion(OffsetDateTime.now());
+                    tokenRefrescoRepository.save(t);
+                });
+    }
+
     public record ResultadoRotacion(Usuario usuario, String refreshTokenPlano) {}
 }
