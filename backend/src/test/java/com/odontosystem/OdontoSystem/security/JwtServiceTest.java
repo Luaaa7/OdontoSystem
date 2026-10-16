@@ -34,8 +34,8 @@ class JwtServiceTest {
         String token = jwt.generateAccessToken(lucia);
 
         assertThat(jwt.extractCorreo(token)).isEqualTo("lucia@correo.pe");
-        assertThat(jwt.extractClaim(token, c -> c.get("rol", String.class))).isEqualTo("PACIENTE");
-        assertThat(jwt.extractClaim(token, c -> c.get("usuarioId", String.class)))
+        assertThat(jwt.<String>extractClaim(token, c -> c.get("rol", String.class))).isEqualTo("PACIENTE");
+        assertThat(jwt.<String>extractClaim(token, c -> c.get("usuarioId", String.class)))
                 .isEqualTo(lucia.getUsuario().getId().toString());
         assertThat(jwt.isTokenValid(token, lucia)).isTrue();
     }

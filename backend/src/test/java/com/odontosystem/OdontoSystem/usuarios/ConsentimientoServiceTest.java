@@ -14,7 +14,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,22 +35,37 @@ class ConsentimientoServiceTest {
         assertThat(new ConsentimientoService(null, "2026-10-v1").versionVigente()).isEqualTo("2026-10-v1");
     }
 
-    @Test
-    @DisplayName("Registrar guarda la versión vigente, el usuario y la IP limpia (y una IP inválida queda en null)")
-    void registra() {
-        EntityManager em = mock(EntityManager.class);
+    private static Query consultaSimulada(EntityManager em) {
         Query query = mock(Query.class, RETURNS_SELF);
         when(em.createNativeQuery(anyString())).thenReturn(query);
+        return query;
+    }
+
+    @Test
+    @DisplayName("Registrar guarda la versión vigente, el usuario y la IP limpia")
+    void registra() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = consultaSimulada(em);
         UUID usuario = UUID.randomUUID();
 
         new ConsentimientoService(em, "2026-10-v1").registrar(usuario, " 190.12.3.4 ");
-        verify(query, times(2)).setParameter("usuario", usuario);
-        verify(query, times(2)).setParameter("version", "2026-10-v1");
-        verify(query).setParameter("ip", "190.12.3.4");
-        verify(query, times(2)).executeUpdate();
 
-        new ConsentimientoService(em, "2026-10-v1").registrar(usuario, "no-es-una-ip!");
+        verify(query).setParameter("usuario", usuario);
+        verify(query).setParameter("version", "2026-10-v1");
+        verify(query).setParameter("ip", "190.12.3.4");
+        verify(query).executeUpdate();
+    }
+
+    @Test
+    @DisplayName("Si la IP no es válida, el consentimiento se guarda igual pero con IP vacía (null)")
+    void registraConIpInvalida() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = consultaSimulada(em);
+
+        new ConsentimientoService(em, "2026-10-v1").registrar(UUID.randomUUID(), "no-es-una-ip!");
+
         verify(query).setParameter("ip", (Object) null);
+        verify(query).executeUpdate();
     }
 
     @Test
