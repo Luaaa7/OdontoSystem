@@ -30,7 +30,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.when;
 
 /** Buscador en memoria: perfiles y servicios simulados, sin base de datos. */
 @ExtendWith(MockitoExtension.class)
