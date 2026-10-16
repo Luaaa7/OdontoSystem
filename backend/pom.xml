@@ -199,4 +199,20 @@
         </plugins>
     </build>
 
+    <!-- Solo para VS Code/Eclipse (m2e): el editor analiza con nivel Java 25 para evitar el error falso
+         'Flexible Constructor Bodies' de Lombok. Maven y Railway siguen compilando con Java 21. -->
+    <profiles>
+        <profile>
+            <id>solo-editor</id>
+            <activation>
+                <property>
+                    <name>m2e.version</name>
+                </property>
+            </activation>
+            <properties>
+                <java.version>25</java.version>
+            </properties>
+        </profile>
+    </profiles>
+
 </project>
