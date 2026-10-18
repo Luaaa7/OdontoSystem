@@ -2,11 +2,14 @@ package com.odontosystem.OdontoSystem.controller;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.odontosystem.OdontoSystem.dto.AuthResponse;
+import com.odontosystem.OdontoSystem.dto.GoogleLoginRequest;
+import com.odontosystem.OdontoSystem.dto.GoogleRegistroRequest;
 import com.odontosystem.OdontoSystem.dto.LoginRequest;
 import com.odontosystem.OdontoSystem.dto.RecuperarPasswordRequest;
 import com.odontosystem.OdontoSystem.dto.RefreshRequest;
 import com.odontosystem.OdontoSystem.dto.RegistroRequest;
 import com.odontosystem.OdontoSystem.dto.RestablecerPasswordRequest;
+import com.odontosystem.OdontoSystem.service.AuthGoogleService;
 import com.odontosystem.OdontoSystem.service.AuthService;
 import com.odontosystem.OdontoSystem.service.RecuperacionPasswordService;
 import com.odontosystem.OdontoSystem.service.TokenRefrescoService;
@@ -25,12 +28,14 @@ public class AuthController {
     private final AuthService authService;
     private final TokenRefrescoService tokenRefrescoService;
     private final RecuperacionPasswordService recuperacion;
+    private final AuthGoogleService authGoogle;
 
     public AuthController(AuthService authService, TokenRefrescoService tokenRefrescoService,
-                          RecuperacionPasswordService recuperacion) {
+                          RecuperacionPasswordService recuperacion, AuthGoogleService authGoogle) {
         this.authService = authService;
         this.tokenRefrescoService = tokenRefrescoService;
         this.recuperacion = recuperacion;
+        this.authGoogle = authGoogle;
     }
 
     @PostMapping("/register")
@@ -76,5 +81,23 @@ public class AuthController {
     public ResponseEntity<Void> restablecerPassword(@Valid @RequestBody RestablecerPasswordRequest request) {
         recuperacion.restablecer(request.correo(), request.codigo(), request.passwordNueva());
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Entrar con Google (RF16)",
+            description = "Recibe el ID token de Google Sign-In. 200 con los tokens si hay cuenta (si existe una cuenta con "
+                    + "el mismo correo, se liga). 404 si no hay cuenta: el frontend debe mostrar el registro con Google.")
+    @PostMapping("/google")
+    public ResponseEntity<AuthResponse> entrarConGoogle(@Valid @RequestBody GoogleLoginRequest request,
+                                                        HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(authGoogle.entrar(request.idToken(), httpRequest));
+    }
+
+    @Operation(summary = "Registrarse con Google (RF16)",
+            description = "Correo y nombre salen de Google; se completan documento, teléfono, rol (y COP si es odontólogo) "
+                    + "y la aceptación de la política de privacidad. 201 con los tokens.")
+    @PostMapping("/google/registro")
+    public ResponseEntity<AuthResponse> registrarConGoogle(@Valid @RequestBody GoogleRegistroRequest request,
+                                                           HttpServletRequest httpRequest) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(authGoogle.registrar(request, httpRequest));
     }
 }

@@ -64,26 +64,8 @@ public class AuthService {
 
     @Transactional
     public AuthResponse registrar(RegistroRequest request, HttpServletRequest httpRequest) {
-        if (usuarioRepository.existsByCorreo(request.correo())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya está registrado");
-        }
-        if (usuarioRepository.existsByNumeroDocumento(request.numeroDocumento())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El número de documento ya está registrado");
-        }
-        if (usuarioRepository.existsByTelefono(request.telefono())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El teléfono ya está registrado");
-        }
-
-        if (request.rol() == RolUsuario.ODONTOLOGO) {
-            if (request.numeroColegiatura() == null || request.numeroColegiatura().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "El número de colegiatura (COP) es obligatorio para registrarse como odontólogo");
-            }
-            if (perfilOdontologoRepository.existsByNumeroColegiatura(request.numeroColegiatura())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Ese número de colegiatura ya está registrado por otra cuenta");
-            }
-        }
+        validarDatosNuevos(request.correo(), request.numeroDocumento(), request.telefono(), request.rol(),
+                request.numeroColegiatura());
 
         Usuario usuario = Usuario.builder()
                 .numeroDocumento(request.numeroDocumento())
@@ -96,23 +78,60 @@ public class AuthService {
                 .metodoRegistro(MetodoAutenticacion.PASSWORD)
                 .build();
 
-        usuario = usuarioRepository.save(usuario);
+        return crearCuenta(usuario, request.numeroColegiatura(), httpRequest);
+    }
+
+    /** Revisa que correo, documento, teléfono y COP no estén usados por otra cuenta (409) y que el odontólogo traiga COP (400). */
+    public void validarDatosNuevos(String correo, String numeroDocumento, String telefono, RolUsuario rol,
+                                   String numeroColegiatura) {
+        if (usuarioRepository.existsByCorreo(correo)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya está registrado");
+        }
+        if (usuarioRepository.existsByNumeroDocumento(numeroDocumento)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El número de documento ya está registrado");
+        }
+        if (usuarioRepository.existsByTelefono(telefono)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El teléfono ya está registrado");
+        }
+
+        if (rol == RolUsuario.ODONTOLOGO) {
+            if (numeroColegiatura == null || numeroColegiatura.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "El número de colegiatura (COP) es obligatorio para registrarse como odontólogo");
+            }
+            if (perfilOdontologoRepository.existsByNumeroColegiatura(numeroColegiatura)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Ese número de colegiatura ya está registrado por otra cuenta");
+            }
+        }
+    }
+
+    /**
+     * Guarda la cuenta nueva (con contraseña o con Google), registra el consentimiento de privacidad, crea la
+     * reputación del paciente o el perfil del odontólogo (verificado en el COP) y entrega los tokens.
+     */
+    @Transactional
+    public AuthResponse crearCuenta(Usuario nuevo, String numeroColegiatura, HttpServletRequest httpRequest) {
+        Usuario usuario = usuarioRepository.save(nuevo);
         // RNF07: queda registrado qué versión de la política aceptó, cuándo y desde qué IP
         consentimientos.registrar(usuario.getId(), httpRequest.getRemoteAddr());
 
-        if (request.rol() == RolUsuario.PACIENTE) {
+        if (usuario.getRol() == RolUsuario.PACIENTE) {
             ReputacionPaciente reputacion = ReputacionPaciente.builder()
                     .usuario(usuario)
                     .build();
             reputacionPacienteRepository.save(reputacion);
         } else {
-            crearPerfilOdontologoConVerificacion(usuario, request.numeroColegiatura());
+            crearPerfilOdontologoConVerificacion(usuario, numeroColegiatura);
         }
 
-        UsuarioPrincipal principal = new UsuarioPrincipal(usuario);
-        String accessToken = jwtService.generateAccessToken(principal);
-        String refreshToken = tokenRefrescoService.crearParaUsuario(usuario, httpRequest);
+        return emitirTokens(usuario, httpRequest);
+    }
 
+    /** Access token (15 min) + refresh token nuevo para este dispositivo. */
+    public AuthResponse emitirTokens(Usuario usuario, HttpServletRequest httpRequest) {
+        String accessToken = jwtService.generateAccessToken(new UsuarioPrincipal(usuario));
+        String refreshToken = tokenRefrescoService.crearParaUsuario(usuario, httpRequest);
         return new AuthResponse(accessToken, refreshToken, usuario.getRol().name(), usuario.getNombreCompleto());
     }
 
