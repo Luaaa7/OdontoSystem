@@ -65,11 +65,12 @@ public class NotificacionService {
     private final PlantillasCorreo plantillas;
     private final Clock clock;
     private final TransactionTemplate transaccion;
+    private final PushService push;
 
     public NotificacionService(RecordatorioCitaRepository recordatorioRepository,
                                RegistroNotificacionRepository registroRepository,
                                CitaRepository citaRepository, EnviadorCorreo enviador, PlantillasCorreo plantillas,
-                               Clock clock, PlatformTransactionManager transactionManager) {
+                               Clock clock, PlatformTransactionManager transactionManager, PushService push) {
         this.recordatorioRepository = recordatorioRepository;
         this.registroRepository = registroRepository;
         this.citaRepository = citaRepository;
@@ -77,6 +78,7 @@ public class NotificacionService {
         this.plantillas = plantillas;
         this.clock = clock;
         this.transaccion = new TransactionTemplate(transactionManager);
+        this.push = push;
     }
 
     /** Un correo listo para salir. */
@@ -255,7 +257,23 @@ public class NotificacionService {
         } catch (RuntimeException e) {
             log.warn("No se pudo registrar la notificación: {}", e.getMessage());
         }
+        avisarPorPush(correo);
         return ok;
+    }
+
+    /** La misma noticia como push en los celulares del usuario (si Firebase está configurado). Nunca lanza. */
+    private void avisarPorPush(Correo correo) {
+        try {
+            String titulo = switch (correo.tipo()) {
+                case RECORDATORIO_CITA -> "Recordatorio de tu cita";
+                case AVISO_CANCELACION -> "Cita cancelada";
+                case CONFIRMACION_PAGO -> "Tu cita en OdontoSystem";
+                default -> "OdontoSystem";
+            };
+            push.enviarAUsuario(correo.usuarioId(), titulo, correo.asunto(), Map.of("tipo", correo.tipo().name()));
+        } catch (RuntimeException e) {
+            log.warn("No se pudo enviar la push: {}", e.getMessage());
+        }
     }
 
     private static String primerNombre(String nombreCompleto) {

@@ -51,6 +51,7 @@ class PagoServiceTest {
     @Mock private IntentoPagoRepository intentoRepository;
     @Mock private EventoPagoWebhookRepository eventoRepository;
     @Mock private CitaService citaService;
+    @Mock private ReembolsoService reembolsos;
 
     private final Clock reloj = Clock.fixed(Instant.parse("2026-10-19T13:00:00Z"), ZoneOffset.UTC);
     private final PasarelaSimulada pasarela = new PasarelaSimulada("llave-de-prueba-de-32-bytes!!!!!".getBytes(StandardCharsets.UTF_8));
@@ -61,9 +62,13 @@ class PagoServiceTest {
     @BeforeEach
     void setUp() {
         servicio = new PagoService(citaRepository, pagoRepository, intentoRepository, eventoRepository,
-                citaService, pasarela, reloj, "simulado");
+                citaService, pasarela, culqiSinLlaves(), reembolsos, reloj, "simulado");
         paciente = Usuario.builder().id(UUID.randomUUID()).build();
         perfil = PerfilOdontologo.builder().usuarioId(UUID.randomUUID()).build();
+    }
+
+    private static PasarelaCulqi culqiSinLlaves() {
+        return new PasarelaCulqi("", "", org.springframework.web.client.RestClient.builder());
     }
 
     private Cita cita(EstadoCita estado, int minutosDesdeReserva) {
@@ -144,10 +149,10 @@ class PagoServiceTest {
     }
 
     @Test
-    @DisplayName("Si los pagos no están en modo simulado → 503")
+    @DisplayName("Modo culqi sin llaves configuradas → 503")
     void modoDesactivado() {
         var sinPagos = new PagoService(citaRepository, pagoRepository, intentoRepository, eventoRepository,
-                citaService, pasarela, reloj, "culqi");
+                citaService, pasarela, culqiSinLlaves(), reembolsos, reloj, "culqi");
         assertThatThrownBy(() -> sinPagos.pagarDeposito(paciente.getId(), UUID.randomUUID(), MetodoPago.YAPE))
                 .satisfies(e -> assertThat(estado(e)).isEqualTo(503));
     }

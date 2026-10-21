@@ -29,8 +29,8 @@ import java.util.UUID;
  *   <li>Al aprobarse una apelación por inasistencia (la ausencia estaba justificada).</li>
  * </ul>
  * Es idempotente: cada motivo usa una clave propia ("cancelacion:&lt;cita&gt;") y la BD no permite repetirla.
- * Con la pasarela simulada el reembolso queda REEMBOLSADO en el acto; con Culqi quedará SOLICITADO hasta
- * que llegue su aviso.
+ * Con la pasarela simulada el reembolso queda REEMBOLSADO en el acto. Con Culqi se pide la devolución a su API
+ * ({@code POST /refunds}) y queda REEMBOLSADO si Culqi la acepta; si Culqi no responde queda SOLICITADO.
  */
 @Service
 public class ReembolsoService {
@@ -45,16 +45,18 @@ public class ReembolsoService {
     private final ReembolsoRepository reembolsoRepository;
     private final CitaRepository citaRepository;
     private final PasarelaSimulada pasarela;
+    private final PasarelaCulqi culqi;
     private final Clock clock;
     private final String modo;
 
     public ReembolsoService(PagoRepository pagoRepository, ReembolsoRepository reembolsoRepository,
-                            CitaRepository citaRepository, PasarelaSimulada pasarela, Clock clock,
+                            CitaRepository citaRepository, PasarelaSimulada pasarela, PasarelaCulqi culqi, Clock clock,
                             @Value("${app.pagos.modo:simulado}") String modo) {
         this.pagoRepository = pagoRepository;
         this.reembolsoRepository = reembolsoRepository;
         this.citaRepository = citaRepository;
         this.pasarela = pasarela;
+        this.culqi = culqi;
         this.clock = clock;
         this.modo = modo;
     }
@@ -84,13 +86,53 @@ public class ReembolsoService {
                 .estado(EstadoReembolso.SOLICITADO)
                 .build());
 
-        if (esSimulado()) {
+        String operacion = pago.getNumeroOperacion();
+        boolean pagoSimulado = operacion != null && operacion.startsWith("sim_");
+        if (esSimulado() || pagoSimulado) {
             reembolso.setIdExterno(pasarela.reembolsar(reembolso.getId(), pago.getMonto()));
             reembolso.setEstado(EstadoReembolso.REEMBOLSADO);
             reembolso.setProcesadoEn(OffsetDateTime.now(clock));
             reembolso = reembolsoRepository.saveAndFlush(reembolso); // el trigger pasa el pago a REEMBOLSADO
+        } else {
+            reembolso = pedirACulqi(reembolso);
         }
         return Optional.of(aRespuesta(reembolso));
+    }
+
+    /**
+     * Tarea programada: vuelve a pedir a Culqi las devoluciones que quedaron SOLICITADO porque Culqi no respondió.
+     * Devuelve cuántas quedaron REEMBOLSADO.
+     */
+    @Transactional
+    public int reintentarSolicitados() {
+        if (!culqi.configurada()) {
+            return 0;
+        }
+        int hechos = 0;
+        for (Reembolso r : reembolsoRepository.findByEstado(EstadoReembolso.SOLICITADO)) {
+            if (pedirACulqi(r).getEstado() == EstadoReembolso.REEMBOLSADO) {
+                hechos++;
+            }
+        }
+        return hechos;
+    }
+
+    /** Pide la devolución a Culqi; si Culqi no responde, el reembolso queda SOLICITADO para el siguiente intento. */
+    private Reembolso pedirACulqi(Reembolso reembolso) {
+        Pago pago = reembolso.getPago();
+        String operacion = pago.getNumeroOperacion();
+        if (!culqi.configurada() || operacion == null || !operacion.startsWith("chr_")) {
+            return reembolso;
+        }
+        try {
+            reembolso.setIdExterno(culqi.reembolsar(operacion, PagoService.centimos(reembolso.getMonto())));
+            reembolso.setEstado(EstadoReembolso.REEMBOLSADO);
+            reembolso.setProcesadoEn(OffsetDateTime.now(clock));
+            return reembolsoRepository.saveAndFlush(reembolso); // el trigger pasa el pago a REEMBOLSADO
+        } catch (PasarelaCulqi.CulqiNoDisponible e) {
+            log.warn("Culqi no aceptó la devolución del pago {}: queda SOLICITADO ({})", pago.getId(), e.getMessage());
+            return reembolso;
+        }
     }
 
     /** Reembolsos de una cita; los ve el paciente o el odontólogo de la cita. */

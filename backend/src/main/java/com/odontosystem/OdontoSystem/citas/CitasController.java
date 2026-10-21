@@ -50,14 +50,16 @@ public class CitasController {
         return citaService.reservar(principal.getUsuario().getId(), request);
     }
 
-    @Operation(summary = "Pagar el depósito (paciente) — pasarela SIMULADA",
-            description = "metodo: TARJETA, YAPE o PLIN. Mientras no estén las llaves de Culqi, el cobro lo aprueba una pasarela "
-                    + "simulada que manda un aviso firmado; el backend verifica la firma, marca el pago VERIFICADO y la cita queda "
-                    + "CONFIRMADA (o PENDIENTE_CONFIRMACION si el odontólogo confirma a mano). 409 si ya pasaron los 15 minutos.")
+    @Operation(summary = "Pagar el depósito (paciente)",
+            description = "Body: metodo (TARJETA, YAPE o PLIN) y, con Culqi, token (tkn_… de tarjeta o ype_… de Yape, que entrega "
+                    + "Culqi Checkout en el frontend con la llave de GET /api/public/pagos/config). Respuesta: estado VERIFICADO "
+                    + "(pagado: la cita queda CONFIRMADA o PENDIENTE_CONFIRMACION), RECHAZADO (puede reintentar con otro medio; "
+                    + "ver mensaje) o PENDIENTE (Culqi no respondió: se confirma solo en minutos, no volver a pagar). "
+                    + "En modo simulado no hace falta token. 409 si ya pasaron los 15 minutos o hay un pago en confirmación.")
     @PostMapping("/api/citas/{citaId}/pagar")
     public PagoResponse pagar(@AuthenticationPrincipal UsuarioPrincipal principal, @PathVariable UUID citaId,
                               @Valid @RequestBody PagoRequest request) {
-        return pagoService.pagarDeposito(principal.getUsuario().getId(), citaId, request.metodo());
+        return pagoService.pagarDeposito(principal.getUsuario().getId(), citaId, request.metodo(), request.token());
     }
 
     @Operation(summary = "Mis citas (paciente)", description = "De la más reciente a la más antigua.")

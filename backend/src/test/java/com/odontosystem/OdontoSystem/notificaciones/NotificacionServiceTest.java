@@ -63,6 +63,7 @@ class NotificacionServiceTest {
     @Mock private RegistroNotificacionRepository registros;
     @Mock private CitaRepository citas;
     @Mock private EnviadorCorreo enviador;
+    @Mock private PushService push;
     @Mock private PlatformTransactionManager transacciones;
 
     private NotificacionService servicio;
@@ -77,7 +78,7 @@ class NotificacionServiceTest {
         SpringTemplateEngine motor = new SpringTemplateEngine();
         motor.setTemplateResolver(resolver);
         servicio = new NotificacionService(recordatorios, registros, citas, enviador, new PlantillasCorreo(motor),
-                RELOJ, transacciones);
+                RELOJ, transacciones, push);
         when(enviador.activo()).thenReturn(true);
     }
 

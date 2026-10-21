@@ -1,6 +1,8 @@
 package com.odontosystem.OdontoSystem.service;
 
 import com.odontosystem.OdontoSystem.dto.AuthResponse;
+import com.odontosystem.OdontoSystem.dto.GoogleAuthResponse;
+import com.odontosystem.OdontoSystem.dto.GoogleLoginRequest;
 import com.odontosystem.OdontoSystem.dto.GoogleRegistroRequest;
 import com.odontosystem.OdontoSystem.entity.MetodoAutenticacion;
 import com.odontosystem.OdontoSystem.entity.RolUsuario;
@@ -58,6 +60,10 @@ class AuthGoogleServiceTest {
         when(authService.crearCuenta(any(), any(), any())).thenReturn(tokens);
     }
 
+    private static GoogleLoginRequest soloToken() {
+        return new GoogleLoginRequest("token-google", null, null, null, null, null, null, null);
+    }
+
     private Usuario lucia() {
         return Usuario.builder().id(UUID.randomUUID()).correo("lucia@gmail.com").nombreCompleto("Lucía Ramos")
                 .rol(RolUsuario.PACIENTE).estaActivo(true).build();
@@ -71,7 +77,9 @@ class AuthGoogleServiceTest {
         Usuario u = lucia();
         when(usuarios.findByGoogleOauthSub("google-sub-1")).thenReturn(Optional.of(u));
 
-        assertThat(servicio.entrar("token-google", http)).isSameAs(tokens);
+        GoogleAuthResponse r = servicio.continuar(soloToken(), http);
+        assertThat(r.perfilCompleto()).isTrue();
+        assertThat(r.accessToken()).isEqualTo("access");
         verify(authService).emitirTokens(u, http);
     }
 
@@ -81,7 +89,7 @@ class AuthGoogleServiceTest {
         Usuario u = lucia();
         when(usuarios.findByCorreo("lucia@gmail.com")).thenReturn(Optional.of(u));
 
-        servicio.entrar("token-google", http);
+        servicio.continuar(soloToken(), http);
 
         assertThat(u.getGoogleOauthSub()).isEqualTo("google-sub-1");
         assertThat(u.getEmailVerificadoEn()).isNotNull();
@@ -90,24 +98,49 @@ class AuthGoogleServiceTest {
     }
 
     @Test
-    @DisplayName("No liga por correo si Google no confirma que el correo es de esa persona")
+    @DisplayName("No liga por correo si Google no confirma que el correo es de esa persona (400: no puede seguir con Google)")
     void noLigaSinCorreoVerificado() {
         when(verificador.verificar("token-google"))
                 .thenReturn(new DatosGoogle("google-sub-1", "lucia@gmail.com", false, "Lucía", null));
         when(usuarios.findByCorreo("lucia@gmail.com")).thenReturn(Optional.of(lucia()));
 
-        assertThatThrownBy(() -> servicio.entrar("token-google", http))
+        assertThatThrownBy(() -> servicio.continuar(soloToken(), http))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
-                        e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+                        e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
         verify(usuarios, never()).save(any());
     }
 
     @Test
-    @DisplayName("Sin cuenta responde 404 para que el frontend muestre el registro")
-    void sinCuenta() {
-        assertThatThrownBy(() -> servicio.entrar("token-google", http))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Completa tu registro");
+    @DisplayName("Cuenta nueva sin datos: perfil_completo = false con correo y nombre de Google, sin tokens")
+    void sinCuentaPideDatos() {
+        GoogleAuthResponse r = servicio.continuar(soloToken(), http);
+
+        assertThat(r.perfilCompleto()).isFalse();
+        assertThat(r.correo()).isEqualTo("lucia@gmail.com");
+        assertThat(r.nombreCompleto()).isEqualTo("Lucía Ramos");
+        assertThat(r.accessToken()).isNull();
+        verify(authService, never()).crearCuenta(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Cuenta nueva con datos en la misma llamada: crea la cuenta (formato de la app) y entra")
+    void registraEnLaMismaLlamada() {
+        GoogleAuthResponse r = servicio.continuar(new GoogleLoginRequest("token-google", RolUsuario.PACIENTE, "DNI",
+                "70123456", "987654321", null, null, true), http);
+
+        assertThat(r.perfilCompleto()).isTrue();
+        verify(authService).validarDatosNuevos("lucia@gmail.com", "70123456", "987654321", RolUsuario.PACIENTE, null);
+        verify(authService).crearCuenta(any(Usuario.class), eq(null), eq(http));
+    }
+
+    @Test
+    @DisplayName("Con datos incompletos o sin aceptar la privacidad responde 400 y no crea nada")
+    void datosIncompletos() {
+        assertThatThrownBy(() -> servicio.continuar(new GoogleLoginRequest("token-google", RolUsuario.PACIENTE, "DNI",
+                "70123456", " ", null, null, true), http)).isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() -> servicio.continuar(new GoogleLoginRequest("token-google", RolUsuario.PACIENTE, "DNI",
+                "70123456", "987654321", null, null, false), http)).isInstanceOf(ResponseStatusException.class);
+        verify(authService, never()).crearCuenta(any(), any(), any());
     }
 
     @Test
@@ -117,7 +150,7 @@ class AuthGoogleServiceTest {
         u.setEstaActivo(false);
         when(usuarios.findByGoogleOauthSub("google-sub-1")).thenReturn(Optional.of(u));
 
-        assertThatThrownBy(() -> servicio.entrar("token-google", http))
+        assertThatThrownBy(() -> servicio.continuar(soloToken(), http))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
         verify(authService, never()).emitirTokens(any(), any());

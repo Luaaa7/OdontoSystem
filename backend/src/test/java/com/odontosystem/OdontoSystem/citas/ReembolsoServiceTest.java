@@ -62,7 +62,8 @@ class ReembolsoServiceTest {
     }
 
     private ReembolsoService servicio(String modo) {
-        return new ReembolsoService(pagos, reembolsos, citas, new PasarelaSimulada(), RELOJ, modo);
+        return new ReembolsoService(pagos, reembolsos, citas, new PasarelaSimulada(),
+                new PasarelaCulqi("", "", org.springframework.web.client.RestClient.builder()), RELOJ, modo);
     }
 
     @Test

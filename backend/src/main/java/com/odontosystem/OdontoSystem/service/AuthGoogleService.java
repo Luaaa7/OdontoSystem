@@ -1,8 +1,11 @@
 package com.odontosystem.OdontoSystem.service;
 
 import com.odontosystem.OdontoSystem.dto.AuthResponse;
+import com.odontosystem.OdontoSystem.dto.GoogleAuthResponse;
+import com.odontosystem.OdontoSystem.dto.GoogleLoginRequest;
 import com.odontosystem.OdontoSystem.dto.GoogleRegistroRequest;
 import com.odontosystem.OdontoSystem.entity.MetodoAutenticacion;
+import com.odontosystem.OdontoSystem.entity.RolUsuario;
 import com.odontosystem.OdontoSystem.entity.Usuario;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
 import com.odontosystem.OdontoSystem.security.VerificadorGoogle;
@@ -19,11 +22,11 @@ import java.util.Optional;
 /**
  * RF16: entrar y registrarse con Google.
  * <ul>
- *   <li><b>Entrar</b>: si la cuenta de Google ya está ligada, entra. Si no, pero existe una cuenta con el mismo
- *       correo (y Google confirma que el correo es suyo), se liga y entra. Si no hay cuenta, responde 404 para que
- *       el frontend muestre el formulario de registro.</li>
- *   <li><b>Registrarse</b>: correo y nombre vienen de Google; DNI, teléfono, rol y COP los completa la persona.
- *       La cuenta no tiene contraseña (puede crear una con "olvidé mi contraseña").</li>
+ *   <li>Si la cuenta de Google ya está ligada, entra. Si no, pero existe una cuenta con el mismo correo (y Google
+ *       confirma que el correo es suyo), se liga y entra.</li>
+ *   <li>Si no hay cuenta: sin datos de registro responde perfil_completo = false (con correo y nombre de Google para
+ *       prellenar); con los datos (rol, documento, teléfono, COP, privacidad) crea la cuenta y entra.</li>
+ *   <li>La cuenta creada con Google no tiene contraseña (puede crear una con "olvidé mi contraseña").</li>
  * </ul>
  */
 @Service
@@ -39,54 +42,80 @@ public class AuthGoogleService {
         this.authService = authService;
     }
 
+    /** POST /api/auth/google: entra, pide completar datos o registra, según el caso. */
     @Transactional
-    public AuthResponse entrar(String idToken, HttpServletRequest httpRequest) {
-        DatosGoogle google = verificador.verificar(idToken);
+    public GoogleAuthResponse continuar(GoogleLoginRequest request, HttpServletRequest httpRequest) {
+        DatosGoogle google = verificador.verificar(request.idToken());
 
-        Usuario usuario = usuarioRepository.findByGoogleOauthSub(google.sub())
-                .or(() -> ligarPorCorreo(google))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "No hay una cuenta con este Google. Completa tu registro."));
-
-        if (!Boolean.TRUE.equals(usuario.getEstaActivo())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tu cuenta está desactivada");
+        Optional<Usuario> existente = usuarioRepository.findByGoogleOauthSub(google.sub()).or(() -> ligarPorCorreo(google));
+        if (existente.isPresent()) {
+            Usuario usuario = existente.get();
+            if (!Boolean.TRUE.equals(usuario.getEstaActivo())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tu cuenta está desactivada");
+            }
+            return GoogleAuthResponse.sesion(authService.emitirTokens(usuario, httpRequest), usuario.getCorreo());
         }
-        return authService.emitirTokens(usuario, httpRequest);
+
+        exigirCorreoVerificado(google);
+        if (!request.traeDatosDeRegistro()) {
+            return GoogleAuthResponse.faltanDatos(google.correo(), textoONulo(google.nombre()));
+        }
+        if (request.tipoDocumento() == null || vacio(request.numeroDocumento()) || vacio(request.telefono())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Para crear tu cuenta completa tipo y número de documento y teléfono");
+        }
+        if (!Boolean.TRUE.equals(request.aceptaPrivacidad())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Debes aceptar la política de privacidad para registrarte");
+        }
+        AuthResponse tokens = crearCuenta(google, request.rol(), request.tipoDocumento(), request.numeroDocumento().strip(),
+                request.telefono().strip(), request.numeroColegiatura(), request.nombreCompleto(), httpRequest);
+        return GoogleAuthResponse.sesion(tokens, google.correo());
     }
 
+    /** POST /api/auth/google/registro (se mantiene por compatibilidad: hace lo mismo que /google con datos). */
     @Transactional
     public AuthResponse registrar(GoogleRegistroRequest request, HttpServletRequest httpRequest) {
         DatosGoogle google = verificador.verificar(request.idToken());
-        if (!google.correoVerificado() || google.correo() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Google no confirma tu correo; regístrate con correo y contraseña");
-        }
+        exigirCorreoVerificado(google);
         if (usuarioRepository.findByGoogleOauthSub(google.sub()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Esta cuenta de Google ya está registrada; inicia sesión");
         }
+        return crearCuenta(google, request.rol(), request.tipoDocumento(), request.numeroDocumento(), request.telefono(),
+                request.numeroColegiatura(), request.nombreCompleto(), httpRequest);
+    }
 
-        String nombre = textoONulo(request.nombreCompleto()) != null ? request.nombreCompleto().strip() : textoONulo(google.nombre());
+    // ------------------------------------------------------------------
+
+    private AuthResponse crearCuenta(DatosGoogle google, RolUsuario rol, String tipoDocumento, String numeroDocumento,
+                                     String telefono, String numeroColegiatura, String nombreEscrito,
+                                     HttpServletRequest httpRequest) {
+        String nombre = textoONulo(nombreEscrito) != null ? nombreEscrito.strip() : textoONulo(google.nombre());
         if (nombre == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Escribe tu nombre completo");
         }
-
-        authService.validarDatosNuevos(google.correo(), request.numeroDocumento(), request.telefono(), request.rol(),
-                request.numeroColegiatura());
+        authService.validarDatosNuevos(google.correo(), numeroDocumento, telefono, rol, numeroColegiatura);
 
         Usuario nuevo = Usuario.builder()
-                .numeroDocumento(request.numeroDocumento())
-                .tipoDocumento(request.tipoDocumento())
+                .numeroDocumento(numeroDocumento)
+                .tipoDocumento(tipoDocumento)
                 .nombreCompleto(nombre)
-                .telefono(request.telefono())
+                .telefono(telefono)
                 .correo(google.correo())
                 .googleOauthSub(google.sub())
                 .fotoPerfilUrl(google.foto())
                 .emailVerificadoEn(OffsetDateTime.now())
-                .rol(request.rol())
+                .rol(rol)
                 .metodoRegistro(MetodoAutenticacion.GOOGLE_OAUTH)
                 .build();
 
-        return authService.crearCuenta(nuevo, request.numeroColegiatura(), httpRequest);
+        return authService.crearCuenta(nuevo, numeroColegiatura, httpRequest);
+    }
+
+    private static void exigirCorreoVerificado(DatosGoogle google) {
+        if (!google.correoVerificado() || google.correo() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Google no confirma tu correo; regístrate con correo y contraseña");
+        }
     }
 
     /** Liga la cuenta de Google a una cuenta existente con el mismo correo, solo si Google confirma que el correo es suyo. */
@@ -101,6 +130,10 @@ public class AuthGoogleService {
             }
             return usuarioRepository.save(u);
         });
+    }
+
+    private static boolean vacio(String s) {
+        return s == null || s.isBlank();
     }
 
     private static String textoONulo(String s) {

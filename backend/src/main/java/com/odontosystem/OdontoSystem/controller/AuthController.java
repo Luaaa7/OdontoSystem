@@ -2,6 +2,7 @@ package com.odontosystem.OdontoSystem.controller;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import com.odontosystem.OdontoSystem.dto.AuthResponse;
+import com.odontosystem.OdontoSystem.dto.GoogleAuthResponse;
 import com.odontosystem.OdontoSystem.dto.GoogleLoginRequest;
 import com.odontosystem.OdontoSystem.dto.GoogleRegistroRequest;
 import com.odontosystem.OdontoSystem.dto.LoginRequest;
@@ -83,13 +84,15 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Entrar con Google (RF16)",
-            description = "Recibe el ID token de Google Sign-In. 200 con los tokens si hay cuenta (si existe una cuenta con "
-                    + "el mismo correo, se liga). 404 si no hay cuenta: el frontend debe mostrar el registro con Google.")
+    @Operation(summary = "Entrar o registrarse con Google (RF16)",
+            description = "Solo id_token: si la cuenta existe (o hay una con el mismo correo, que se liga) responde "
+                    + "perfil_completo = true con los tokens; si es nueva responde perfil_completo = false con correo y "
+                    + "nombre_completo de Google. Para crearla, se vuelve a llamar con id_token + rol, tipo_documento, "
+                    + "numero_documento, telefono, numero_colegiatura (odontólogo) y acepta_privacidad = true.")
     @PostMapping("/google")
-    public ResponseEntity<AuthResponse> entrarConGoogle(@Valid @RequestBody GoogleLoginRequest request,
-                                                        HttpServletRequest httpRequest) {
-        return ResponseEntity.ok(authGoogle.entrar(request.idToken(), httpRequest));
+    public ResponseEntity<GoogleAuthResponse> entrarConGoogle(@Valid @RequestBody GoogleLoginRequest request,
+                                                              HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(authGoogle.continuar(request, httpRequest));
     }
 
     @Operation(summary = "Registrarse con Google (RF16)",
