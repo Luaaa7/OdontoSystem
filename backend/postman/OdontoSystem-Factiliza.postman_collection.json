@@ -1,0 +1,266 @@
+{
+  "info": {
+    "name": "OdontoSystem - Verificación con Factiliza (RENIEC)",
+    "description": "Escenarios como el ejercicio de API Key + Token + descuento de tokens.\n\n1) Nuestra API: cada petición lleva el JWT (Authorization: Bearer). Sin token o con token inválido → 401; con rol equivocado → 403.\n2) Factiliza: su API se protege con nuestro token (Bearer) y cada consulta de DNI descuenta 1 del cupo mensual (tabla consumo_api_externa, límite FACTILIZA_LIMITE_MENSUAL).\n\nAntes de usarla: crea un Environment en Postman con correoOdontologo, passwordOdontologo y factilizaToken. NO guardes el token de Factiliza en esta colección ni la subas con valores reales.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://odontosystem-production.up.railway.app"
+    },
+    {
+      "key": "factilizaUrl",
+      "value": "https://api.factiliza.com"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "dniPrueba",
+      "value": "45879632"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. OdontoSystem (JWT)",
+      "item": [
+        {
+          "name": "1.1 Login odontólogo (guarda el token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correo\": \"{{correoOdontologo}}\",\n  \"password\": \"{{passwordOdontologo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', r.access_token);",
+                  "pm.test('Rol ODONTOLOGO', () => pm.expect(r.rol).to.eql('ODONTOLOGO'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Estado de mi verificación (200 OK)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/odontologos/yo/verificacion",
+            "description": "VERIFICADO, OBSERVADO, PENDIENTE o RECHAZADO, con la nota."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Trae estado', () => pm.expect(pm.response.json()).to.have.property('estado'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Reintentar verificación (COP + RENIEC)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/odontologos/yo/verificacion/reintentar",
+            "description": "Si está OBSERVADO y Factiliza está activo, consulta el DNI en RENIEC (gasta 1 consulta del cupo)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 (revisado), 409 (ya revisado) o 429 (espera 10 min)', () => pm.expect(pm.response.code).to.be.oneOf([200,409,429]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.4 Sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/odontologos/yo/verificacion",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.5 Token inválido (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer TOKEN_INVALIDO"
+              }
+            ],
+            "url": "{{baseUrl}}/api/odontologos/yo/verificacion",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Factiliza directo (gasta consultas de tu plan)",
+      "item": [
+        {
+          "name": "2.1 DNI válido (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{factilizaToken}}"
+              }
+            ],
+            "url": "{{factilizaUrl}}/v1/dni/info/{{dniPrueba}}",
+            "description": "Usa un DNI real de alguien del equipo, con su permiso."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('success = true', () => pm.expect(pm.response.json().success).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.2 Sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{factilizaUrl}}/v1/dni/info/{{dniPrueba}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza sin token', () => pm.expect(pm.response.code).to.be.oneOf([401,403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.3 Token inválido (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer TOKEN_INVALIDO"
+              }
+            ],
+            "url": "{{factilizaUrl}}/v1/dni/info/{{dniPrueba}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rechaza token inválido', () => pm.expect(pm.response.code).to.be.oneOf([401,403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.4 DNI inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{factilizaToken}}"
+              }
+            ],
+            "url": "{{factilizaUrl}}/v1/dni/info/00000000",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No encontrado', () => pm.expect(pm.response.code).to.be.oneOf([404,400]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

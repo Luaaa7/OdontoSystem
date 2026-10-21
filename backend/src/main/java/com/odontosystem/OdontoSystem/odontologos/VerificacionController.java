@@ -26,7 +26,8 @@ public class VerificacionController {
     }
 
     @Operation(summary = "Reintentar ahora la verificación COP (odontólogo)",
-            description = "Solo si sigue PENDIENTE; como máximo una vez cada 10 minutos (429 si es antes).")
+            description = "Si sigue PENDIENTE, o si está OBSERVADO y RENIEC (Factiliza) está activo: se vuelve a consultar el COP "
+                    + "y, si el nombre no coincide, el DNI en RENIEC. Como máximo una vez cada 10 minutos (429 si es antes).")
     @PostMapping("/api/odontologos/yo/verificacion/reintentar")
     public EstadoVerificacionResponse reintentar(@AuthenticationPrincipal UsuarioPrincipal principal) {
         return verificacion.reintentarAhora(principal.getUsuario().getId());

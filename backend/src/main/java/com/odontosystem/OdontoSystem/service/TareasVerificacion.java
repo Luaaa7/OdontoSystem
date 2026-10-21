@@ -24,6 +24,10 @@ public class TareasVerificacion {
             if (n > 0) {
                 log.info("Se reintentó la verificación COP de {} odontólogos", n);
             }
+            int observados = verificacion.revisarObservadosConReniec();
+            if (observados > 0) {
+                log.info("Se revisaron {} odontólogos OBSERVADO con RENIEC (Factiliza)", observados);
+            }
         } catch (RuntimeException e) {
             log.error("Falló el reintento de verificación COP", e);
         }

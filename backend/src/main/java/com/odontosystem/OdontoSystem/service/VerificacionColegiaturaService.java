@@ -3,9 +3,11 @@ package com.odontosystem.OdontoSystem.service;
 import com.odontosystem.OdontoSystem.entity.EstadoVerificacionOdontologo;
 import com.odontosystem.OdontoSystem.entity.PerfilOdontologo;
 import com.odontosystem.OdontoSystem.entity.ResultadoVerificacionCop;
+import com.odontosystem.OdontoSystem.entity.Usuario;
 import com.odontosystem.OdontoSystem.entity.VerificacionCop;
 import com.odontosystem.OdontoSystem.repository.PerfilOdontologoRepository;
 import com.odontosystem.OdontoSystem.repository.VerificacionCopRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +27,9 @@ import java.util.stream.Collectors;
  * RF09: verificación de la colegiatura contra el buscador público del COP.
  * <ul>
  *   <li>Encontrado y el nombre coincide → VERIFICADO (ya puede recibir reservas).</li>
- *   <li>Encontrado pero el nombre no coincide → OBSERVADO; no encontrado → RECHAZADO.</li>
+ *   <li>Encontrado pero el nombre no coincide → se consulta el DNI del odontólogo en RENIEC (Factiliza): si RENIEC
+ *       confirma que ese DNI es del titular de la colegiatura → VERIFICADO; si no, o si no se pudo consultar →
+ *       OBSERVADO (revisión manual). No encontrado en el COP → RECHAZADO.</li>
  *   <li>La página del COP no respondió → sigue PENDIENTE y se <b>reintenta solo</b> con espera creciente
  *       (1 h, 2 h, 4 h, 8 h) hasta 5 intentos. El odontólogo también puede pedir un reintento desde su panel.</li>
  * </ul>
@@ -37,6 +41,8 @@ public class VerificacionColegiaturaService {
     static final int MAX_INTENTOS_AUTOMATICOS = 5;
     static final Duration ESPERA_BASE = Duration.ofHours(1);
     static final Duration ESPERA_MANUAL = Duration.ofMinutes(10);
+    /** Aparece en el detalle de la bitácora cuando RENIEC dio una respuesta definitiva (no se vuelve a gastar consulta). */
+    static final String MARCA_RENIEC = "RENIEC (Factiliza):";
 
     public record EstadoVerificacionResponse(EstadoVerificacionOdontologo estado, String nota, long intentosFallidos,
                                              OffsetDateTime ultimoIntento) {}
@@ -44,14 +50,25 @@ public class VerificacionColegiaturaService {
     private final PerfilOdontologoRepository perfilRepository;
     private final VerificacionCopRepository verificacionRepository;
     private final ColegioOdontologicoVerificacionService colegio;
+    private final ClienteFactiliza reniec;
     private final Clock clock;
 
+    /** Sin RENIEC: los OBSERVADO quedan para revisión manual. */
     public VerificacionColegiaturaService(PerfilOdontologoRepository perfilRepository,
                                           VerificacionCopRepository verificacionRepository,
                                           ColegioOdontologicoVerificacionService colegio, Clock clock) {
+        this(perfilRepository, verificacionRepository, colegio, null, clock);
+    }
+
+    @Autowired
+    public VerificacionColegiaturaService(PerfilOdontologoRepository perfilRepository,
+                                          VerificacionCopRepository verificacionRepository,
+                                          ColegioOdontologicoVerificacionService colegio, ClienteFactiliza reniec,
+                                          Clock clock) {
         this.perfilRepository = perfilRepository;
         this.verificacionRepository = verificacionRepository;
         this.colegio = colegio;
+        this.reniec = reniec;
         this.clock = clock;
     }
 
@@ -77,12 +94,9 @@ public class VerificacionColegiaturaService {
                     detalle = "Identidad confirmada contra el registro nacional COP: " + resultado.nombreEncontrado()
                             + " (" + resultado.region() + ").";
                 } else {
-                    perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.OBSERVADO);
-                    perfil.setNotaObservacion("El nombre registrado no coincide claramente con el nombre encontrado en el COP ("
-                            + resultado.nombreEncontrado() + "). Requiere revisión.");
-                    resultadoParaLog = ResultadoVerificacionCop.RECHAZADO;
-                    detalle = "COP encontrado pero el nombre no coincide: esperado='" + nombreUsuario
-                            + "', encontrado='" + resultado.nombreEncontrado() + "'.";
+                    Revision revision = revisarConReniec(perfil, nombreUsuario, resultado.nombreEncontrado(), ahora);
+                    resultadoParaLog = revision.resultado();
+                    detalle = revision.detalle();
                 }
             }
             case NO_ENCONTRADO -> {
@@ -134,12 +148,35 @@ public class VerificacionColegiaturaService {
         return reintentados;
     }
 
+    /**
+     * Tarea programada: los OBSERVADO que todavía no tienen una respuesta de RENIEC se revisan con Factiliza
+     * (una sola consulta por odontólogo). Si RENIEC no respondió o no hay cupo, se intenta en la siguiente vuelta.
+     */
+    @Transactional
+    public int revisarObservadosConReniec() {
+        if (!reniecDisponible()) {
+            return 0;
+        }
+        int revisados = 0;
+        for (PerfilOdontologo perfil : perfilRepository.findByEstadoVerificacion(EstadoVerificacionOdontologo.OBSERVADO)) {
+            if (perfil.getDesactivadoEn() != null) continue;
+            if (verificacionRepository.existsByOdontologo_UsuarioIdAndDetalleContaining(perfil.getUsuarioId(), MARCA_RENIEC)) {
+                continue;
+            }
+            verificarYGuardar(perfil);
+            revisados++;
+        }
+        return revisados;
+    }
+
     /** El odontólogo pide un reintento desde su panel (como máximo uno cada 10 minutos). */
     @Transactional
     public EstadoVerificacionResponse reintentarAhora(UUID odontologoId) {
         PerfilOdontologo perfil = perfilRepository.findById(odontologoId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Perfil de odontólogo no encontrado"));
-        if (perfil.getEstadoVerificacion() != EstadoVerificacionOdontologo.PENDIENTE) {
+        boolean observadoRevisable = perfil.getEstadoVerificacion() == EstadoVerificacionOdontologo.OBSERVADO
+                && reniecDisponible();
+        if (perfil.getEstadoVerificacion() != EstadoVerificacionOdontologo.PENDIENTE && !observadoRevisable) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Tu colegiatura ya fue revisada (" + perfil.getEstadoVerificacion() + "); no hace falta reintentar");
         }
@@ -164,6 +201,60 @@ public class VerificacionColegiaturaService {
     }
 
     // ------------------------------------------------------------------
+
+    private record Revision(ResultadoVerificacionCop resultado, String detalle) {}
+
+    private boolean reniecDisponible() {
+        return reniec != null && reniec.configurado();
+    }
+
+    /**
+     * El COP encontró la colegiatura pero con otro nombre (p. ej. el odontólogo se registró con un nombre abreviado).
+     * Se consulta su DNI en RENIEC: si es del mismo titular de la colegiatura, la identidad queda confirmada.
+     */
+    private Revision revisarConReniec(PerfilOdontologo perfil, String nombreUsuario, String nombreCop, OffsetDateTime ahora) {
+        String base = "COP encontrado pero el nombre no coincide: esperado='" + nombreUsuario
+                + "', encontrado='" + nombreCop + "'.";
+        perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.OBSERVADO);
+        perfil.setNotaObservacion("El nombre registrado no coincide claramente con el nombre encontrado en el COP ("
+                + nombreCop + "). Requiere revisión.");
+
+        Usuario usuario = perfil.getUsuario();
+        if (!reniecDisponible() || usuario == null || !"DNI".equalsIgnoreCase(usuario.getTipoDocumento())
+                || usuario.getNumeroDocumento() == null) {
+            return new Revision(ResultadoVerificacionCop.RECHAZADO, base);
+        }
+        String dni = usuario.getNumeroDocumento().strip();
+        ClienteFactiliza.ConsultaDni consulta = reniec.consultarDni(dni);
+        String dniOculto = dni.length() >= 4 ? "****" + dni.substring(dni.length() - 4) : "****";
+        switch (consulta.estado()) {
+            case ENCONTRADO -> {
+                String oficial = consulta.persona().nombreCompleto();
+                if (nombresCoinciden(oficial, nombreCop)) {
+                    perfil.setColegiaturaVerificada(true);
+                    perfil.setColegiaturaVerificadaEn(ahora);
+                    perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.VERIFICADO);
+                    perfil.setVerificadoEn(ahora);
+                    perfil.setNotaObservacion(null);
+                    return new Revision(ResultadoVerificacionCop.VERIFICADO, base + " " + MARCA_RENIEC + " el DNI "
+                            + dniOculto + " es de " + oficial + ", el mismo titular de la colegiatura. Identidad confirmada.");
+                }
+                perfil.setNotaObservacion("Según RENIEC, el DNI registrado no pertenece al titular de la colegiatura "
+                        + perfil.getNumeroColegiatura() + ". Requiere revisión.");
+                return new Revision(ResultadoVerificacionCop.RECHAZADO, base + " " + MARCA_RENIEC + " el DNI "
+                        + dniOculto + " es de " + oficial + ", que no coincide con el COP.");
+            }
+            case NO_ENCONTRADO -> {
+                perfil.setNotaObservacion("El DNI registrado no figura en RENIEC. Revisa tu número de documento.");
+                return new Revision(ResultadoVerificacionCop.RECHAZADO, base + " " + MARCA_RENIEC + " DNI "
+                        + dniOculto + " no encontrado.");
+            }
+            default -> {
+                return new Revision(ResultadoVerificacionCop.RECHAZADO, base + " RENIEC no consultado ("
+                        + consulta.detalle() + "); se reintentará.");
+            }
+        }
+    }
 
     /** 1 h después del primer fallo, 2 h después del segundo, 4 h, 8 h... */
     static Duration espera(long fallidos) {
