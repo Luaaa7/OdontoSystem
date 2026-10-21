@@ -51,15 +51,17 @@ public class CitasController {
     }
 
     @Operation(summary = "Pagar el depósito (paciente)",
-            description = "Body: metodo (TARJETA, YAPE o PLIN) y, con Culqi, token (tkn_… de tarjeta o ype_… de Yape, que entrega "
-                    + "Culqi Checkout en el frontend con la llave de GET /api/public/pagos/config). Respuesta: estado VERIFICADO "
+            description = "Body: metodo (TARJETA, YAPE o PLIN) y, con una pasarela real, token. Culqi: tkn_… (tarjeta) o ype_… "
+                    + "(Yape) de Culqi Checkout. Mercado Pago: el token de MercadoPago.js / Bricks y medio_pago_id (visa, master, "
+                    + "debvisa, amex… o yape). La llave pública sale de GET /api/public/pagos/config. Respuesta: estado VERIFICADO "
                     + "(pagado: la cita queda CONFIRMADA o PENDIENTE_CONFIRMACION), RECHAZADO (puede reintentar con otro medio; "
-                    + "ver mensaje) o PENDIENTE (Culqi no respondió: se confirma solo en minutos, no volver a pagar). "
+                    + "ver mensaje) o PENDIENTE (la pasarela no respondió: se confirma solo en minutos, no volver a pagar). "
                     + "En modo simulado no hace falta token. 409 si ya pasaron los 15 minutos o hay un pago en confirmación.")
     @PostMapping("/api/citas/{citaId}/pagar")
     public PagoResponse pagar(@AuthenticationPrincipal UsuarioPrincipal principal, @PathVariable UUID citaId,
                               @Valid @RequestBody PagoRequest request) {
-        return pagoService.pagarDeposito(principal.getUsuario().getId(), citaId, request.metodo(), request.token());
+        return pagoService.pagarDeposito(principal.getUsuario().getId(), citaId, request.metodo(), request.token(),
+                request.medioPagoId());
     }
 
     @Operation(summary = "Mis citas (paciente)", description = "De la más reciente a la más antigua.")

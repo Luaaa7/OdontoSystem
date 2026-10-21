@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.odontosystem.OdontoSystem.citas.CitaDtos.CitaResponse;
 import com.odontosystem.OdontoSystem.citas.PasarelaCulqi.Cargo;
 import com.odontosystem.OdontoSystem.citas.PasarelaCulqi.CulqiNoDisponible;
+import com.odontosystem.OdontoSystem.citas.PasarelaMercadoPago.MercadoPagoNoDisponible;
+import com.odontosystem.OdontoSystem.citas.PasarelaMercadoPago.Orden;
 import com.odontosystem.OdontoSystem.citas.PasarelaSimulada.Cobro;
 import com.odontosystem.OdontoSystem.entity.Cita;
 import com.odontosystem.OdontoSystem.entity.EstadoCita;
@@ -22,6 +24,7 @@ import com.odontosystem.OdontoSystem.repository.IntentoPagoRepository;
 import com.odontosystem.OdontoSystem.repository.PagoRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -51,6 +54,9 @@ import java.util.UUID;
  *       crea el cargo con la llave secreta. La respuesta de la API (HTTPS + nuestra llave secreta) es la
  *       confirmación verificada. Si Culqi no responde, el pago queda PENDIENTE y lo cierra el aviso (webhook),
  *       que también se verifica consultando el cargo a Culqi.</li>
+ *   <li>{@code mercadopago}: igual, con la API de Orders de Mercado Pago. El frontend tokeniza con MercadoPago.js /
+ *       Bricks y manda el token y el medio ({@code visa}, {@code master}, {@code debvisa}, {@code yape}…). El aviso
+ *       (webhook) se verifica consultando la orden a Mercado Pago.</li>
  * </ul>
  */
 @Service
@@ -59,11 +65,20 @@ public class PagoService {
     private static final Logger log = LoggerFactory.getLogger(PagoService.class);
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** token: el que entrega Culqi Checkout ({@code tkn_…} tarjeta, {@code ype_…} Yape). Solo en modo culqi. */
+    /**
+     * token: el que entrega la pasarela al tokenizar (Culqi: {@code tkn_…} / {@code ype_…}; Mercado Pago: el token de
+     * MercadoPago.js o Bricks). medioPagoId: solo Mercado Pago, el medio que devuelve el Brick ({@code visa},
+     * {@code master}, {@code debvisa}, {@code yape}…). En modo simulado no hace falta ninguno.
+     */
     public record PagoRequest(@jakarta.validation.constraints.NotNull MetodoPago metodo,
-                              @jakarta.validation.constraints.Size(max = 100) String token) {
+                              @jakarta.validation.constraints.Size(max = 255) String token,
+                              @jakarta.validation.constraints.Size(max = 40) String medioPagoId) {
         public PagoRequest(MetodoPago metodo) {
-            this(metodo, null);
+            this(metodo, null, null);
+        }
+
+        public PagoRequest(MetodoPago metodo, String token) {
+            this(metodo, token, null);
         }
     }
 
@@ -72,7 +87,7 @@ public class PagoService {
                                String numeroOperacion, OffsetDateTime verificadoEn, boolean simulado,
                                CitaResponse cita, String mensaje) {}
 
-    /** Lo que se hizo con un aviso de Culqi (para el log y la respuesta del webhook). */
+    /** Lo que se hizo con un aviso de la pasarela (para el log y la respuesta del webhook). */
     public enum ResultadoAviso { CONFIRMADO, CONFIRMADO_Y_DEVUELTO, RECHAZADO, YA_PROCESADO, IGNORADO }
 
     private final CitaRepository citaRepository;
@@ -82,14 +97,25 @@ public class PagoService {
     private final CitaService citaService;
     private final PasarelaSimulada pasarela;
     private final PasarelaCulqi culqi;
+    private final PasarelaMercadoPago mercadoPago;
     private final ReembolsoService reembolsos;
     private final Clock clock;
     private final String modo;
 
+    /** Sin Mercado Pago (simulado o Culqi). */
     public PagoService(CitaRepository citaRepository, PagoRepository pagoRepository,
                        IntentoPagoRepository intentoRepository, EventoPagoWebhookRepository eventoRepository,
                        CitaService citaService, PasarelaSimulada pasarela, PasarelaCulqi culqi,
-                       ReembolsoService reembolsos, Clock clock,
+                       ReembolsoService reembolsos, Clock clock, String modo) {
+        this(citaRepository, pagoRepository, intentoRepository, eventoRepository, citaService, pasarela, culqi,
+                PasarelaMercadoPago.sinConfigurar(), reembolsos, clock, modo);
+    }
+
+    @Autowired
+    public PagoService(CitaRepository citaRepository, PagoRepository pagoRepository,
+                       IntentoPagoRepository intentoRepository, EventoPagoWebhookRepository eventoRepository,
+                       CitaService citaService, PasarelaSimulada pasarela, PasarelaCulqi culqi,
+                       PasarelaMercadoPago mercadoPago, ReembolsoService reembolsos, Clock clock,
                        @Value("${app.pagos.modo:simulado}") String modo) {
         this.citaRepository = citaRepository;
         this.pagoRepository = pagoRepository;
@@ -98,6 +124,7 @@ public class PagoService {
         this.citaService = citaService;
         this.pasarela = pasarela;
         this.culqi = culqi;
+        this.mercadoPago = mercadoPago;
         this.reembolsos = reembolsos;
         this.clock = clock;
         this.modo = modo;
@@ -115,27 +142,40 @@ public class PagoService {
 
     @Transactional
     public PagoResponse pagarDeposito(UUID pacienteId, UUID citaId, MetodoPago metodo, String token) {
+        return pagarDeposito(pacienteId, citaId, metodo, token, null);
+    }
+
+    @Transactional
+    public PagoResponse pagarDeposito(UUID pacienteId, UUID citaId, MetodoPago metodo, String token, String medioPagoId) {
         boolean conCulqi = "culqi".equalsIgnoreCase(modo);
-        if (!conCulqi && !"simulado".equalsIgnoreCase(modo)) {
+        boolean conMercadoPago = "mercadopago".equalsIgnoreCase(modo);
+        if (!conCulqi && !conMercadoPago && !"simulado".equalsIgnoreCase(modo)) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Los pagos en línea aún no están habilitados");
         }
         if (conCulqi) {
             validarParaCulqi(metodo, token);
         }
+        if (conMercadoPago) {
+            validarParaMercadoPago(metodo, token, medioPagoId);
+        }
         Cita cita = citaPendienteDePago(pacienteId, citaId);
         OffsetDateTime ahora = OffsetDateTime.now(clock);
 
+        PasarelaPago procesador = conMercadoPago ? PasarelaPago.MERCADO_PAGO : PasarelaPago.CULQI;
         BigDecimal monto = cita.getMontoDepositoRequerido();
         Pago pago = pagoRepository.saveAndFlush(Pago.builder()
-                .cita(cita).metodoPago(metodo).pasarelaPago(PasarelaPago.CULQI)
+                .cita(cita).metodoPago(metodo).pasarelaPago(procesador)
                 .monto(monto).estado(EstadoPago.PENDIENTE).build());
         IntentoPago intento = intentoRepository.saveAndFlush(IntentoPago.builder()
-                .pago(pago).pasarelaPago(PasarelaPago.CULQI)
+                .pago(pago).pasarelaPago(procesador)
                 .claveIdempotencia(citaId + ":" + UUID.randomUUID())
                 .monto(monto).estado(EstadoIntentoPago.PENDIENTE).build());
 
         if (conCulqi) {
             return cobrarConCulqi(cita, pago, intento, metodo, token, ahora);
+        }
+        if (conMercadoPago) {
+            return cobrarConMercadoPago(cita, pago, intento, metodo, token, medioPagoId, ahora);
         }
 
         Cobro cobro = pasarela.cobrar(intento.getId(), monto, metodo.name());
@@ -294,6 +334,180 @@ public class PagoService {
     }
 
     // ==================================================================
+    // Mercado Pago (API de Orders)
+    // ==================================================================
+
+    private void validarParaMercadoPago(MetodoPago metodo, String token, String medioPagoId) {
+        if (!mercadoPago.configurada()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Los pagos en línea no están disponibles en este momento");
+        }
+        if (metodo == MetodoPago.PLIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Plin todavía no está disponible; paga con tarjeta o Yape");
+        }
+        if (token == null || token.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Falta el token de Mercado Pago: abre el formulario de pago y vuelve a intentarlo");
+        }
+        String medio = medioPagoId == null ? "" : medioPagoId.strip().toLowerCase();
+        if (metodo == MetodoPago.YAPE && !medio.isEmpty() && !medio.equals("yape")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El medio de pago no corresponde a Yape");
+        }
+        if (metodo == MetodoPago.TARJETA && (medio.isEmpty() || medio.equals("yape"))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Falta el medio de la tarjeta (medio_pago_id: visa, master, amex, debvisa…)");
+        }
+        if (!medio.matches("[a-z0-9_]{0,40}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Medio de pago inválido");
+        }
+    }
+
+    private PagoResponse cobrarConMercadoPago(Cita cita, Pago pago, IntentoPago intento, MetodoPago metodo, String token,
+                                              String medioPagoId, OffsetDateTime ahora) {
+        long centimos = centimos(pago.getMonto());
+        String medio = metodo == MetodoPago.YAPE ? "yape" : medioPagoId.strip().toLowerCase();
+        Orden orden;
+        try {
+            orden = mercadoPago.cobrar(token.strip(), medio, centimos, cita.getPaciente().getCorreo(),
+                    intento.getId().toString(), intento.getId().toString());
+        } catch (MercadoPagoNoDisponible e) {
+            // No sabemos si cobró: el pago queda PENDIENTE y lo cierra el aviso de Mercado Pago.
+            log.warn("Mercado Pago no respondió al cobrar el pago {}: {}", pago.getId(), e.getMessage());
+            intento.setMensajeError("Mercado Pago no respondió: " + e.getMessage());
+            intentoRepository.saveAndFlush(intento);
+            return respuesta(pago, metodo, null,
+                    "Estamos confirmando tu pago con el banco. Te avisaremos en unos minutos; no vuelvas a pagar.");
+        }
+
+        if (orden.rechazada()) {
+            intento.setIdExterno(orden.id());
+            intento.setEstado(EstadoIntentoPago.RECHAZADO);
+            intento.setMensajeError(orden.estado() + ": " + orden.detalle());
+            intentoRepository.saveAndFlush(intento);
+            pago.setEstado(EstadoPago.RECHAZADO);
+            pagoRepository.saveAndFlush(pago);
+            return respuesta(pago, metodo, null, orden.mensajeUsuario());
+        }
+        if (!orden.aprobada()) {
+            // En curso (processing / action_required): lo cierra el aviso.
+            intento.setIdExterno(orden.id());
+            intento.setMensajeError("Orden " + orden.estado() + (orden.detalle() == null ? "" : " / " + orden.detalle()));
+            intentoRepository.saveAndFlush(intento);
+            return respuesta(pago, metodo, null, "Estamos confirmando tu pago. Te avisaremos en unos minutos; no vuelvas a pagar.");
+        }
+        if (orden.montoPagadoCentimos() != centimos) {
+            log.error("Mercado Pago cobró {} céntimos para el pago {} (esperado {})",
+                    orden.montoPagadoCentimos(), pago.getId(), centimos);
+            intento.setIdExterno(orden.id());
+            intento.setMensajeError("Monto distinto: " + orden.montoPagadoCentimos());
+            intentoRepository.saveAndFlush(intento);
+            return respuesta(pago, metodo, null, "Estamos revisando tu pago. Te avisaremos en unos minutos.");
+        }
+
+        confirmarOrden(pago, intento, orden, "api:" + orden.id(), "order.processed (respuesta de la API)", ahora);
+        CitaResponse citaActualizada = marcarPagado(pago, orden.id(), ahora);
+        return respuesta(pago, metodo, citaActualizada, "Pago aprobado");
+    }
+
+    /**
+     * Aviso (webhook) de Mercado Pago (tema "order"). No se cree en el cuerpo: se toma el id de la orden y se consulta a
+     * Mercado Pago con el Access Token. Es idempotente: cada estado de una orden se procesa una sola vez.
+     *
+     * @param idEnUrl el {@code data.id} que Mercado Pago también manda en la URL del aviso
+     */
+    @Transactional
+    public ResultadoAviso procesarAvisoMercadoPago(String cuerpo, String idEnUrl) {
+        if (!mercadoPago.configurada()) {
+            return ResultadoAviso.IGNORADO;
+        }
+        JsonNode evento;
+        try {
+            evento = cuerpo == null || cuerpo.isBlank() ? JSON.createObjectNode() : JSON.readTree(cuerpo);
+        } catch (Exception e) {
+            evento = JSON.createObjectNode();
+        }
+        String tipo = evento.path("type").asText("order");
+        if (!"order".equals(tipo)) {
+            return ResultadoAviso.IGNORADO;
+        }
+        String ordenId = evento.path("data").path("id").asText("");
+        if (ordenId.isBlank() && idEnUrl != null) {
+            ordenId = idEnUrl.strip();
+        }
+        if (!ordenId.matches("ORD[A-Za-z0-9]{6,60}")) {
+            return ResultadoAviso.IGNORADO;
+        }
+
+        Optional<Orden> consultada = mercadoPago.consultarOrden(ordenId); // no responde → 503 y Mercado Pago reintenta
+        if (consultada.isEmpty()) {
+            return ResultadoAviso.IGNORADO;
+        }
+        Orden orden = consultada.get();
+        if (!orden.aprobada() && !orden.rechazada()) {
+            return ResultadoAviso.IGNORADO; // todavía en curso: llegará otro aviso
+        }
+        String eventoId = ordenId + ":" + orden.estado() + (orden.detalle() == null ? "" : ":" + orden.detalle());
+        if (eventoRepository.existsByPasarelaPagoAndEventoExternoId(PasarelaPago.MERCADO_PAGO, eventoId)) {
+            return ResultadoAviso.YA_PROCESADO;
+        }
+        Optional<IntentoPago> buscado = uuid(orden.referenciaExterna()).flatMap(intentoRepository::findById);
+        if (buscado.isEmpty()) {
+            log.info("Aviso de Mercado Pago sobre una orden {} que no es de OdontoSystem", ordenId);
+            return ResultadoAviso.IGNORADO;
+        }
+        IntentoPago intento = buscado.get();
+        Pago pago = intento.getPago();
+        OffsetDateTime ahora = OffsetDateTime.now(clock);
+        String accion = evento.path("action").asText("order." + orden.estado());
+
+        if (pago.getEstado() != EstadoPago.PENDIENTE) {
+            registrarAviso(PasarelaPago.MERCADO_PAGO, pago, intento, eventoId, accion, orden.json(),
+                    EstadoWebhookPago.IGNORADO, ahora, "El pago ya estaba " + pago.getEstado());
+            return ResultadoAviso.YA_PROCESADO;
+        }
+        if (orden.rechazada() || orden.montoPagadoCentimos() != centimos(pago.getMonto())) {
+            registrarAviso(PasarelaPago.MERCADO_PAGO, pago, intento, eventoId, accion, orden.json(), EstadoWebhookPago.ERROR,
+                    ahora, orden.rechazada() ? "Orden no aprobada: " + orden.detalle()
+                            : "Monto distinto: " + orden.montoPagadoCentimos());
+            if (orden.rechazada()) {
+                intento.setEstado(EstadoIntentoPago.RECHAZADO);
+                intento.setIdExterno(ordenId);
+                intentoRepository.saveAndFlush(intento);
+                pago.setEstado(EstadoPago.RECHAZADO);
+                pagoRepository.saveAndFlush(pago);
+            }
+            return ResultadoAviso.RECHAZADO;
+        }
+
+        confirmarOrden(pago, intento, orden, eventoId, accion, ahora);
+        Cita cita = pago.getCita();
+        if (cita.getEstado() == EstadoCita.PENDIENTE_PAGO) {
+            marcarPagado(pago, ordenId, ahora);
+            return ResultadoAviso.CONFIRMADO;
+        }
+        // El cobro llegó cuando la reserva ya había vencido: se verifica el pago y se devuelve en el acto.
+        pago.setEstado(EstadoPago.VERIFICADO);
+        pago.setNumeroOperacion(ordenId);
+        pago.setVerificadoEn(ahora);
+        pagoRepository.saveAndFlush(pago);
+        reembolsos.reembolsarDeposito(cita.getId(), "pago-tardio:" + pago.getId(),
+                "El pago llegó cuando la reserva ya había vencido");
+        return ResultadoAviso.CONFIRMADO_Y_DEVUELTO;
+    }
+
+    private void confirmarOrden(Pago pago, IntentoPago intento, Orden orden, String eventoId, String tipo,
+                                OffsetDateTime ahora) {
+        intento.setIdExterno(orden.id());
+        intento.setEstado(EstadoIntentoPago.APROBADO);
+        intento.setConfirmadoEn(ahora);
+        intento.setMensajeError(null);
+        intentoRepository.saveAndFlush(intento);
+        registrarAviso(PasarelaPago.MERCADO_PAGO, pago, intento, eventoId, tipo, orden.json(),
+                EstadoWebhookPago.PROCESADO, ahora, null);
+    }
+
+    // ==================================================================
 
     private Cita citaPendienteDePago(UUID pacienteId, UUID citaId) {
         Cita cita = citaRepository.findById(citaId)
@@ -343,13 +557,19 @@ public class PagoService {
      */
     private void registrarAviso(Pago pago, IntentoPago intento, String eventoId, String tipo, String payload,
                                 EstadoWebhookPago estado, OffsetDateTime ahora, String error) {
+        registrarAviso(PasarelaPago.CULQI, pago, intento, eventoId, tipo, payload, estado, ahora, error);
+    }
+
+    private void registrarAviso(PasarelaPago procesador, Pago pago, IntentoPago intento, String eventoId, String tipo,
+                                String payload, EstadoWebhookPago estado, OffsetDateTime ahora, String error) {
         boolean verificado = estado == EstadoWebhookPago.PROCESADO || estado == EstadoWebhookPago.IGNORADO;
         eventoRepository.saveAndFlush(EventoPagoWebhook.builder()
-                .pago(pago).intentoPago(intento).pasarelaPago(PasarelaPago.CULQI)
-                .eventoExternoId(eventoId)
+                .pago(pago).intentoPago(intento).pasarelaPago(procesador)
+                .eventoExternoId(eventoId.length() > 150 ? eventoId.substring(0, 150) : eventoId)
                 .tipoEvento(tipo.length() > 100 ? tipo.substring(0, 100) : tipo)
                 .payloadJson(jsonValido(payload))
-                .firmaRecibida("verificado consultando la API de Culqi")
+                .firmaRecibida(procesador == PasarelaPago.MERCADO_PAGO
+                        ? "verificado consultando la API de Mercado Pago" : "verificado consultando la API de Culqi")
                 .firmaVerificada(verificado)
                 .estado(estado)
                 .procesadoEn(verificado ? ahora : null)
