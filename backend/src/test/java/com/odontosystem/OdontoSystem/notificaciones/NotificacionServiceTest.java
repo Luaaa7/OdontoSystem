@@ -48,7 +48,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Recordatorios y avisos por correo. Las plantillas son las reales (Thymeleaf), el envío se simula.
+ * Recordatorios y avisos por correo. Las plantillas son las reales (Thymeleaf),
+ * el envío se simula.
  * "Ahora" es el domingo 11/10/2026 a las 10:00 en Ica.
  */
 @ExtendWith(MockitoExtension.class)
@@ -59,12 +60,18 @@ class NotificacionServiceTest {
     private static final OffsetDateTime AHORA = OffsetDateTime.of(2026, 10, 11, 10, 0, 0, 0, MENOS_5);
     private static final Clock RELOJ = Clock.fixed(AHORA.toInstant(), ZoneId.of("America/Lima"));
 
-    @Mock private RecordatorioCitaRepository recordatorios;
-    @Mock private RegistroNotificacionRepository registros;
-    @Mock private CitaRepository citas;
-    @Mock private EnviadorCorreo enviador;
-    @Mock private PushService push;
-    @Mock private PlatformTransactionManager transacciones;
+    @Mock
+    private RecordatorioCitaRepository recordatorios;
+    @Mock
+    private RegistroNotificacionRepository registros;
+    @Mock
+    private CitaRepository citas;
+    @Mock
+    private EnviadorCorreo enviador;
+    @Mock
+    private PushService push;
+    @Mock
+    private PlatformTransactionManager transacciones;
 
     private NotificacionService servicio;
 
@@ -96,7 +103,8 @@ class NotificacionServiceTest {
     }
 
     private RecordatorioCita pendiente(Cita cita, OffsetDateTime programado) {
-        RecordatorioCita r = RecordatorioCita.builder().id(UUID.randomUUID()).cita(cita).programadoPara(programado).build();
+        RecordatorioCita r = RecordatorioCita.builder().id(UUID.randomUUID()).cita(cita).programadoPara(programado)
+                .build();
         when(recordatorios.vencidos(eq(EstadoNotificacion.PENDIENTE), any(), any())).thenReturn(List.of(r.getId()));
         when(recordatorios.conDetalle(r.getId())).thenReturn(Optional.of(r));
         when(recordatorios.cambiarEstadoSi(eq(r.getId()), any(), any(), any())).thenReturn(1);
@@ -123,7 +131,8 @@ class NotificacionServiceTest {
     @DisplayName("Cita en 10 horas: el de 24 h ya pasó, solo programa el de 2 h; en 1 hora, ninguno")
     void soloLosQueSiguenEnElFuturo() {
         when(citas.sinRecordatorios(eq(EstadoCita.CONFIRMADA), any(), any()))
-                .thenReturn(List.of(cita(EstadoCita.CONFIRMADA, AHORA.plusHours(10)), cita(EstadoCita.CONFIRMADA, AHORA.plusHours(1))));
+                .thenReturn(List.of(cita(EstadoCita.CONFIRMADA, AHORA.plusHours(10)),
+                        cita(EstadoCita.CONFIRMADA, AHORA.plusHours(1))));
 
         assertThat(servicio.programarRecordatorios()).isEqualTo(1);
     }
@@ -143,8 +152,10 @@ class NotificacionServiceTest {
         verify(enviador).enviar(eq("lucia@correo.pe"), eq("Lucía Ramos Peña"), asunto.capture(), html.capture());
         assertThat(asunto.getValue()).isEqualTo("Recordatorio: tu cita de mañana a las 10:00");
         assertThat(html.getValue()).contains("Lucía").contains("Resina estética")
-                .contains("lunes 12 de octubre").contains("Dra. Ana Torres").contains("Av. Principal 123").contains(", Parcona");
-        verify(recordatorios).cambiarEstadoSi(r.getId(), EstadoNotificacion.PENDIENTE, EstadoNotificacion.ENVIADA, AHORA);
+                .contains("lunes 12 de octubre").contains("Dra. Ana Torres").contains("Av. Principal 123")
+                .contains(", Parcona");
+        verify(recordatorios).cambiarEstadoSi(r.getId(), EstadoNotificacion.PENDIENTE, EstadoNotificacion.ENVIADA,
+                AHORA);
         ArgumentCaptor<RegistroNotificacion> registro = ArgumentCaptor.forClass(RegistroNotificacion.class);
         verify(registros).save(registro.capture());
         assertThat(registro.getValue().getTipo()).isEqualTo(TipoNotificacion.RECORDATORIO_CITA);
@@ -177,11 +188,13 @@ class NotificacionServiceTest {
     @DisplayName("Si el proveedor falla, el recordatorio queda FALLIDA y se registra el intento")
     void proveedorFalla() {
         RecordatorioCita r = pendiente(cita(EstadoCita.CONFIRMADA, AHORA.plusHours(2)), AHORA);
-        doThrow(new IllegalStateException("sin red")).when(enviador).enviar(anyString(), anyString(), anyString(), anyString());
+        doThrow(new IllegalStateException("sin red")).when(enviador).enviar(anyString(), anyString(), anyString(),
+                anyString());
 
         assertThat(servicio.enviarPendientes()).isZero();
 
-        verify(recordatorios).cambiarEstadoSi(eq(r.getId()), eq(EstadoNotificacion.ENVIADA), eq(EstadoNotificacion.FALLIDA), isNull());
+        verify(recordatorios).cambiarEstadoSi(eq(r.getId()), eq(EstadoNotificacion.ENVIADA),
+                eq(EstadoNotificacion.FALLIDA), isNull());
         ArgumentCaptor<RegistroNotificacion> registro = ArgumentCaptor.forClass(RegistroNotificacion.class);
         verify(registros).save(registro.capture());
         assertThat(registro.getValue().getEstado()).isEqualTo(EstadoNotificacion.FALLIDA);
@@ -196,7 +209,8 @@ class NotificacionServiceTest {
         verify(recordatorios, never()).vencidos(any(), any(), any());
     }
 
-    // ------------------------------------------------------------------ avisos inmediatos
+    // ------------------------------------------------------------------ avisos
+    // inmediatos
 
     @Test
     @DisplayName("Cita confirmada (pago verificado): avisa al paciente con fecha, hora y depósito")
@@ -204,7 +218,8 @@ class NotificacionServiceTest {
         Cita c = cita(EstadoCita.CONFIRMADA, AHORA.plusDays(1));
         when(citas.conDetalle(c.getId())).thenReturn(Optional.of(c));
 
-        servicio.avisarCambioDeEstado(new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CONFIRMADA));
+        servicio.avisarCambioDeEstado(
+                new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CONFIRMADA));
 
         ArgumentCaptor<String> asunto = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
@@ -222,8 +237,10 @@ class NotificacionServiceTest {
         when(citas.conDetalle(conReembolso.getId())).thenReturn(Optional.of(conReembolso));
         when(citas.conDetalle(sinPago.getId())).thenReturn(Optional.of(sinPago));
 
-        servicio.avisarCambioDeEstado(new CitaCambioEstado(conReembolso.getId(), EstadoCita.CONFIRMADA, EstadoCita.CANCELADA_CON_REEMBOLSO));
-        servicio.avisarCambioDeEstado(new CitaCambioEstado(sinPago.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CANCELADA_SIN_REEMBOLSO));
+        servicio.avisarCambioDeEstado(
+                new CitaCambioEstado(conReembolso.getId(), EstadoCita.CONFIRMADA, EstadoCita.CANCELADA_CON_REEMBOLSO));
+        servicio.avisarCambioDeEstado(
+                new CitaCambioEstado(sinPago.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CANCELADA_SIN_REEMBOLSO));
 
         ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
         verify(enviador, times(2)).enviar(any(), any(), any(), html.capture());
@@ -242,4 +259,88 @@ class NotificacionServiceTest {
 
         verify(enviador, never()).enviar(any(), any(), any(), any());
     }
+
+    // ------------------------------------------------------------------ aviso al
+    // odontólogo
+
+    private static Cita citaConOdontologoConCorreo(EstadoCita estado) {
+        Cita c = cita(estado, AHORA.plusDays(1));
+        c.getOdontologo().getUsuario().setCorreo("ana@correo.pe");
+        return c;
+    }
+
+    @Test
+    @DisplayName("Paciente paga y la cita queda confirmada: el odontólogo recibe su correo además del paciente")
+    void odontologoRecibeAvisoDeCitaNueva() {
+        Cita c = citaConOdontologoConCorreo(EstadoCita.CONFIRMADA);
+        when(citas.conDetalle(c.getId())).thenReturn(Optional.of(c));
+
+        servicio.avisarCambioDeEstado(
+                new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CONFIRMADA));
+
+        ArgumentCaptor<String> para = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> asunto = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
+        verify(enviador, times(2)).enviar(para.capture(), any(), asunto.capture(), html.capture());
+        assertThat(para.getAllValues()).containsExactly("lucia@correo.pe", "ana@correo.pe");
+        assertThat(asunto.getAllValues().get(1)).startsWith("Nueva cita · ").contains("lunes 12 de octubre");
+        assertThat(html.getAllValues().get(1)).contains("Dra. Ana Torres").contains("Lucía")
+                .contains("Resina estética").contains("S/ 30.00").contains("confirmada");
+    }
+
+    @Test
+    @DisplayName("Si el odontólogo aprueba a mano, el correo le pide que confirme la cita")
+    void odontologoDebeConfirmar() {
+        Cita c = citaConOdontologoConCorreo(EstadoCita.PENDIENTE_CONFIRMACION);
+        when(citas.conDetalle(c.getId())).thenReturn(Optional.of(c));
+
+        servicio.avisarCambioDeEstado(
+                new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.PENDIENTE_CONFIRMACION));
+
+        ArgumentCaptor<String> asunto = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
+        verify(enviador, times(2)).enviar(any(), any(), asunto.capture(), html.capture());
+        assertThat(asunto.getAllValues().get(1)).startsWith("Nueva cita por confirmar");
+        assertThat(html.getAllValues().get(1)).contains("confírmala");
+    }
+
+    @Test
+    @DisplayName("Cuando el odontólogo confirma la cita, solo se avisa al paciente (no se le repite el aviso a él)")
+    void alConfirmarElOdontologoNoSeLeAvisaDeNuevo() {
+        Cita c = citaConOdontologoConCorreo(EstadoCita.CONFIRMADA);
+        when(citas.conDetalle(c.getId())).thenReturn(Optional.of(c));
+
+        servicio.avisarCambioDeEstado(
+                new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_CONFIRMACION, EstadoCita.CONFIRMADA));
+
+        verify(enviador).enviar(eq("lucia@correo.pe"), any(), any(), any());
+        verify(enviador, never()).enviar(eq("ana@correo.pe"), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("Si el odontólogo no tiene correo, solo se avisa al paciente y no se rompe nada")
+    void odontologoSinCorreo() {
+        Cita c = cita(EstadoCita.CONFIRMADA, AHORA.plusDays(1)); // el odontólogo del helper no tiene correo
+        when(citas.conDetalle(c.getId())).thenReturn(Optional.of(c));
+
+        servicio.avisarCambioDeEstado(
+                new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CONFIRMADA));
+
+        verify(enviador, times(1)).enviar(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("El push del odontólogo lleva su propio título, distinto al del paciente")
+    void pushDelOdontologoTieneTituloPropio() {
+        Cita c = citaConOdontologoConCorreo(EstadoCita.CONFIRMADA);
+        when(citas.conDetalle(c.getId())).thenReturn(Optional.of(c));
+
+        servicio.avisarCambioDeEstado(
+                new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CONFIRMADA));
+
+        verify(push).enviarAUsuario(eq(c.getOdontologo().getUsuario().getId()), eq("Nueva cita reservada"),
+                anyString(), any());
+        verify(push).enviarAUsuario(eq(c.getPaciente().getId()), eq("Tu cita en OdontoSystem"), anyString(), any());
+    }
+
 }
