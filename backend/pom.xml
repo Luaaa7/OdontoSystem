@@ -159,6 +159,12 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Pruebas de integración contra un PostgreSQL + PostGIS real en Docker (versión según Spring Boot) -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
         
         <dependency>
             <groupId>org.jsoup</groupId>
