@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -38,15 +39,19 @@ class ReputacionServiceTest {
 
     private static final Instant AHORA = Instant.parse("2026-10-15T15:00:00Z");
 
-    @Mock private ReputacionPacienteRepository reputaciones;
-    @Mock private ParametrosSistema parametros;
+    @Mock
+    private ReputacionPacienteRepository reputaciones;
+    @Mock
+    private ParametrosSistema parametros;
+    @Mock
+    private ApplicationEventPublisher eventos;
 
     private ReputacionService servicio;
     private final UUID paciente = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        servicio = new ReputacionService(reputaciones, parametros, Clock.fixed(AHORA, ZoneOffset.UTC));
+        servicio = new ReputacionService(reputaciones, parametros, Clock.fixed(AHORA, ZoneOffset.UTC), eventos);
         when(parametros.entero(eq(ParametrosSistema.LIMITE_STRIKES), eq(3))).thenReturn(3);
         when(parametros.entero(eq(ReputacionService.DIAS_SUSPENSION), eq(30))).thenReturn(30);
         when(reputaciones.save(any(ReputacionPaciente.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -158,5 +163,47 @@ class ReputacionServiceTest {
         conReputacion(0, EstadoReputacion.EXCELENTE, null);
         servicio.quitarStrike(paciente);
         verify(reputaciones, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Al sumar un strike se publica el evento con los datos del paciente")
+    void sumarStrikePublicaElEvento() {
+        Usuario u = Usuario.builder().id(paciente).nombreCompleto("Lucía Ramos Peña").correo("lucia@correo.pe").build();
+        when(reputaciones.findById(paciente)).thenReturn(Optional.empty());
+
+        servicio.sumarStrike(u);
+
+        ArgumentCaptor<StrikeSumado> evento = ArgumentCaptor.forClass(StrikeSumado.class);
+        verify(eventos).publishEvent(evento.capture());
+        assertThat(evento.getValue().pacienteId()).isEqualTo(paciente);
+        assertThat(evento.getValue().correo()).isEqualTo("lucia@correo.pe");
+        assertThat(evento.getValue().strikes()).isEqualTo((short) 1);
+        assertThat(evento.getValue().limite()).isEqualTo((short) 3);
+        assertThat(evento.getValue().restringidoHasta()).isNull();
+    }
+
+    @Test
+    @DisplayName("El tercer strike publica el evento con la fecha hasta la que queda suspendido")
+    void tercerStrikePublicaLaSuspension() {
+        conReputacion(2, EstadoReputacion.REGULAR, null);
+
+        servicio.sumarStrike(Usuario.builder().id(paciente).build());
+
+        ArgumentCaptor<StrikeSumado> evento = ArgumentCaptor.forClass(StrikeSumado.class);
+        verify(eventos).publishEvent(evento.capture());
+        assertThat(evento.getValue().strikes()).isEqualTo((short) 3);
+        assertThat(evento.getValue().restringidoHasta())
+                .isEqualTo(OffsetDateTime.now(Clock.fixed(AHORA, ZoneOffset.UTC)).plusDays(30));
+    }
+
+    @Test
+    @DisplayName("Si ya estaba en el límite, el contador no sube y no se vuelve a avisar")
+    void enElLimiteNoSeAvisaDeNuevo() {
+        conReputacion(3, EstadoReputacion.BLOQUEADO,
+                OffsetDateTime.now(Clock.fixed(AHORA, ZoneOffset.UTC)).plusDays(10));
+
+        servicio.sumarStrike(Usuario.builder().id(paciente).build());
+
+        verify(eventos, never()).publishEvent(any(StrikeSumado.class));
     }
 }

@@ -11,12 +11,14 @@ import com.odontosystem.OdontoSystem.entity.TipoNotificacion;
 import com.odontosystem.OdontoSystem.repository.CitaRepository;
 import com.odontosystem.OdontoSystem.repository.RecordatorioCitaRepository;
 import com.odontosystem.OdontoSystem.repository.RegistroNotificacionRepository;
+import com.odontosystem.OdontoSystem.usuarios.StrikeSumado;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -66,6 +68,11 @@ public class NotificacionService {
     private static final Locale ES = Locale.of("es", "PE");
     private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", ES);
     private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm");
+    /**
+     * Duración de la suspensión: es el valor por defecto del parámetro
+     * DIAS_SUSPENSION_STRIKES.
+     */
+    private static final int DIAS_SUSPENSION = 30;
 
     private final RecordatorioCitaRepository recordatorioRepository;
     private final RegistroNotificacionRepository registroRepository;
@@ -215,6 +222,29 @@ public class NotificacionService {
         if (correos != null) {
             correos.forEach(this::enviar);
         }
+    }
+
+    /** Lo llama {@link AvisosReputacion} cuando un paciente recibe un strike. */
+    public void avisarStrike(StrikeSumado evento) {
+        if (!enviador.activo() || evento.correo() == null || evento.correo().isBlank()) {
+            return;
+        }
+        boolean suspendido = evento.restringidoHasta() != null && evento.strikes() >= evento.limite();
+        Map<String, Object> v = new HashMap<>();
+        v.put("nombre", primerNombre(evento.nombre()));
+        v.put("strikes", evento.strikes());
+        v.put("limite", evento.limite());
+        v.put("suspendido", suspendido);
+        v.put("dias", DIAS_SUSPENSION);
+        if (suspendido) {
+            v.put("hasta", FECHA.format(evento.restringidoHasta().atZoneSameInstant(ZONA)));
+        }
+        String asunto = suspendido
+                ? "Tu cuenta quedó suspendida por strikes"
+                : "Registramos un strike en tu cuenta (" + evento.strikes() + " de " + evento.limite() + ")";
+        enviar(new Correo(evento.pacienteId(), evento.correo(), evento.nombre(), asunto,
+                plantillas.armar("alerta-strike", v), TipoNotificacion.ALERTA_STRIKE,
+                suspendido ? "Cuenta suspendida" : "Strike en tu cuenta"));
     }
 
     private Optional<Correo> avisoPara(Cita cita, CitaCambioEstado evento) {

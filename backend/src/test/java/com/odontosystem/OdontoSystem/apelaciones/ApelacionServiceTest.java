@@ -56,6 +56,7 @@ class ApelacionServiceTest {
     @Mock private ReputacionPacienteRepository reputaciones;
     @Mock private ArchivoService archivos;
     @Mock private ReembolsoService reembolsos;
+        @Mock private org.springframework.context.ApplicationEventPublisher eventos;
     @Mock private ParametrosSistema parametros;
 
     private ApelacionService servicio;
@@ -67,7 +68,7 @@ class ApelacionServiceTest {
     @BeforeEach
     void setUp() {
         servicio = new ApelacionService(apelaciones, citas,
-                new com.odontosystem.OdontoSystem.usuarios.ReputacionService(reputaciones, parametros, RELOJ),
+                new com.odontosystem.OdontoSystem.usuarios.ReputacionService(reputaciones, parametros, RELOJ, eventos),
                 archivos, reembolsos, RELOJ);
         paciente = Usuario.builder().id(UUID.randomUUID()).nombreCompleto("Lucía Ramos").build();
         odontologo = PerfilOdontologo.builder().usuarioId(UUID.randomUUID()).build();

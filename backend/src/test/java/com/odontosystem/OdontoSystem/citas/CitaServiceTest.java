@@ -74,7 +74,7 @@ class CitaServiceTest {
     void setUp() {
         Clock reloj = Clock.fixed(Instant.parse("2026-10-19T13:00:00Z"), ZoneOffset.UTC);
         servicio = new CitaService(citaRepository, usuarioRepository,
-                new com.odontosystem.OdontoSystem.usuarios.ReputacionService(reputacionRepository, parametros, reloj),
+                new com.odontosystem.OdontoSystem.usuarios.ReputacionService(reputacionRepository, parametros, reloj, eventos),
                 disponibilidadService,
                 bloqueoReservas, parametros, entityManager, reloj, eventos, reembolsos);
         paciente = Usuario.builder().id(UUID.randomUUID()).nombreCompleto("Paciente").rol(RolUsuario.PACIENTE).build();

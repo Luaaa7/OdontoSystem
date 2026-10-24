@@ -10,20 +10,25 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Puntualidad del paciente (RF05 / RF09). Es privada: solo la ve el propio paciente y, como semáforo,
+ * Puntualidad del paciente (RF05 / RF09). Es privada: solo la ve el propio
+ * paciente y, como semáforo,
  * el odontólogo de sus citas. No hay estrellas públicas para pacientes.
  * <ul>
- *   <li>+1 strike: no se presenta a una cita confirmada, o la cancela con menos de
- *       HORAS_CANCELACION_CON_STRIKE (2 h) de anticipación.</li>
- *   <li>−1 strike: asiste a una cita (COMPLETADA) o le aprueban una apelación.</li>
- *   <li>Al llegar a LIMITE_MAXIMO_STRIKES (3): suspendido DIAS_SUSPENSION_STRIKES (30) días sin poder reservar.
- *       Al terminar la suspensión vuelve a 0 strikes.</li>
+ * <li>+1 strike: no se presenta a una cita confirmada, o la cancela con menos
+ * de
+ * HORAS_CANCELACION_CON_STRIKE (2 h) de anticipación.</li>
+ * <li>−1 strike: asiste a una cita (COMPLETADA) o le aprueban una
+ * apelación.</li>
+ * <li>Al llegar a LIMITE_MAXIMO_STRIKES (3): suspendido DIAS_SUSPENSION_STRIKES
+ * (30) días sin poder reservar.
+ * Al terminar la suspensión vuelve a 0 strikes.</li>
  * </ul>
  */
 @Service
@@ -33,11 +38,13 @@ public class ReputacionService {
     public static final String DIAS_SUSPENSION = "DIAS_SUSPENSION_STRIKES";
 
     public record ReputacionResponse(short strikes, int limiteStrikes, EstadoReputacion estado,
-                                     OffsetDateTime restringidoHasta, boolean puedeReservar) {}
+            OffsetDateTime restringidoHasta, boolean puedeReservar) {
+    }
 
     private final ReputacionPacienteRepository reputacionRepository;
     private final ParametrosSistema parametros;
     private final Clock clock;
+    private final ApplicationEventPublisher eventos;
 
     @Transactional(readOnly = true)
     public ReputacionResponse deMiCuenta(UUID pacienteId) {
@@ -46,10 +53,14 @@ public class ReputacionService {
         if (r == null || suspensionCumplida(r)) {
             return new ReputacionResponse((short) 0, limite, EstadoReputacion.EXCELENTE, null, true);
         }
-        return new ReputacionResponse(r.getCantidadStrikes(), limite, r.getEstado(), r.getRestringidoHasta(), !bloqueado(r));
+        return new ReputacionResponse(r.getCantidadStrikes(), limite, r.getEstado(), r.getRestringidoHasta(),
+                !bloqueado(r));
     }
 
-    /** Antes de reservar: 403 si está suspendido. Si la suspensión ya terminó, lo deja en 0 strikes. */
+    /**
+     * Antes de reservar: 403 si está suspendido. Si la suspensión ya terminó, lo
+     * deja en 0 strikes.
+     */
     @Transactional
     public void exigirQuePuedaReservar(UUID pacienteId) {
         reputacionRepository.findById(pacienteId).ifPresent(r -> {
@@ -66,7 +77,10 @@ public class ReputacionService {
         });
     }
 
-    /** Suma un strike; con el límite la cuenta queda suspendida por DIAS_SUSPENSION_STRIKES días. */
+    /**
+     * Suma un strike; con el límite la cuenta queda suspendida por
+     * DIAS_SUSPENSION_STRIKES días.
+     */
     @Transactional
     public ReputacionPaciente sumarStrike(Usuario paciente) {
         OffsetDateTime ahora = OffsetDateTime.now(clock);
@@ -77,7 +91,8 @@ public class ReputacionService {
             r.setRestringidoHasta(null);
         }
         int limite = limite();
-        short strikes = (short) Math.min(limite, r.getCantidadStrikes() + 1);
+        short antes = r.getCantidadStrikes();
+        short strikes = (short) Math.min(limite, antes + 1);
         r.setCantidadStrikes(strikes);
         if (strikes >= limite) {
             r.setEstado(EstadoReputacion.BLOQUEADO);
@@ -88,17 +103,26 @@ public class ReputacionService {
             r.setEstado(EstadoReputacion.REGULAR);
         }
         r.setActualizadoEn(ahora);
-        return reputacionRepository.save(r);
+        ReputacionPaciente guardada = reputacionRepository.save(r);
+        // Si ya estaba en el límite el contador no sube: no se avisa dos veces lo
+        // mismo.
+        if (strikes > antes) {
+            eventos.publishEvent(new StrikeSumado(paciente.getId(), paciente.getNombreCompleto(),
+                    paciente.getCorreo(), strikes, (short) limite, r.getRestringidoHasta()));
+        }
+        return guardada;
     }
 
     /**
-     * Quita un strike (asistió o le aprobaron una apelación). Si estaba suspendido y baja del límite,
+     * Quita un strike (asistió o le aprobaron una apelación). Si estaba suspendido
+     * y baja del límite,
      * la suspensión se levanta.
      */
     @Transactional
     public void quitarStrike(UUID pacienteId) {
         reputacionRepository.findById(pacienteId).ifPresent(r -> {
-            if (r.getCantidadStrikes() <= 0) return;
+            if (r.getCantidadStrikes() <= 0)
+                return;
             int strikes = r.getCantidadStrikes() - 1;
             r.setCantidadStrikes((short) strikes);
             r.setEstado(strikes == 0 ? EstadoReputacion.EXCELENTE
@@ -125,10 +149,14 @@ public class ReputacionService {
         return parametros.entero(ParametrosSistema.LIMITE_STRIKES, 3);
     }
 
-    /** Bloqueado = suspensión vigente, o BLOQUEADO sin fecha (cuentas antiguas: solo se libera por apelación). */
+    /**
+     * Bloqueado = suspensión vigente, o BLOQUEADO sin fecha (cuentas antiguas: solo
+     * se libera por apelación).
+     */
     private boolean bloqueado(ReputacionPaciente r) {
         OffsetDateTime hasta = r.getRestringidoHasta();
-        if (hasta != null) return hasta.isAfter(OffsetDateTime.now(clock));
+        if (hasta != null)
+            return hasta.isAfter(OffsetDateTime.now(clock));
         return r.getEstado() == EstadoReputacion.BLOQUEADO;
     }
 
