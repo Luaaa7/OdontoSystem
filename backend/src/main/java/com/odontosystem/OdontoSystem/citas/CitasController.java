@@ -53,8 +53,8 @@ public class CitasController {
     }
 
     @Operation(summary = "Pagar el depósito (paciente)",
-            description = "Body: metodo (TARJETA, YAPE o PLIN) y, con una pasarela real, token. Culqi: tkn_… (tarjeta) o ype_… "
-                    + "(Yape) de Culqi Checkout. Mercado Pago: el token de MercadoPago.js / Bricks y medio_pago_id (visa, master, "
+            description = "Body: metodo (TARJETA o YAPE; PLIN responde 400 \"próximamente\") y, con Mercado Pago, token: el de "
+                    + "MercadoPago.js / Bricks y medio_pago_id (visa, master, "
                     + "debvisa, amex… o yape). La llave pública sale de GET /api/public/pagos/config. Respuesta: estado VERIFICADO "
                     + "(pagado: la cita queda CONFIRMADA o PENDIENTE_CONFIRMACION), RECHAZADO (puede reintentar con otro medio; "
                     + "ver mensaje) o PENDIENTE (la pasarela no respondió: se confirma solo en minutos, no volver a pagar). "

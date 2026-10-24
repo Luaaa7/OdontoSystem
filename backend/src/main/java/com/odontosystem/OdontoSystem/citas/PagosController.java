@@ -1,7 +1,6 @@
 package com.odontosystem.OdontoSystem.citas;
 
 import com.odontosystem.OdontoSystem.citas.PagoService.ResultadoAviso;
-import com.odontosystem.OdontoSystem.citas.PasarelaCulqi.CulqiNoDisponible;
 import com.odontosystem.OdontoSystem.citas.PasarelaMercadoPago.MercadoPagoNoDisponible;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
@@ -16,42 +15,49 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.odontosystem.OdontoSystem.entity.MetodoPago;
+
+import java.util.List;
 import java.util.Map;
 
-/** Configuración pública de pagos y avisos (webhooks) de Culqi y Mercado Pago. */
-@Tag(name = "Pagos", description = "RF13: configuración de la pasarela (Culqi o Mercado Pago) y sus avisos")
+/** Configuración pública de pagos y avisos (webhooks) de Mercado Pago. */
+@Tag(name = "Pagos", description = "RF13: configuración de la pasarela (Mercado Pago o simulada) y sus avisos")
 @SecurityRequirements
 @RestController
 public class PagosController {
 
     private static final Logger log = LoggerFactory.getLogger(PagosController.class);
 
-    public record ConfiguracionPagos(String modo, String culqiLlavePublica, String mercadopagoLlavePublica,
-                                     boolean modoPrueba, String moneda) {}
+    /** disponible = false: el frontend lo muestra deshabilitado con la nota (p. ej. "Próximamente"). */
+    public record MetodoDisponible(MetodoPago metodo, boolean disponible, String nota) {}
+
+    public record ConfiguracionPagos(String modo, String mercadopagoLlavePublica, boolean modoPrueba, String moneda,
+                                     List<MetodoDisponible> metodos) {}
+
+    /** Plin todavía no lo cobra ninguna pasarela (Mercado Pago no lo ofrece): se muestra como "próximamente". */
+    static final List<MetodoDisponible> METODOS = List.of(
+            new MetodoDisponible(MetodoPago.TARJETA, true, null),
+            new MetodoDisponible(MetodoPago.YAPE, true, null),
+            new MetodoDisponible(MetodoPago.PLIN, false, "Próximamente"));
 
     private final PagoService pagos;
-    private final PasarelaCulqi culqi;
     private final PasarelaMercadoPago mercadoPago;
 
-    public PagosController(PagoService pagos, PasarelaCulqi culqi, PasarelaMercadoPago mercadoPago) {
+    public PagosController(PagoService pagos, PasarelaMercadoPago mercadoPago) {
         this.pagos = pagos;
-        this.culqi = culqi;
         this.mercadoPago = mercadoPago;
     }
 
     @Operation(summary = "Configuración de pagos para el frontend",
-            description = "modo: simulado, culqi o mercadopago. La llave pública de la pasarela activa (culqi_llave_publica o "
-                    + "mercadopago_llave_publica) sirve para abrir su formulario de pago; no es secreta. "
-                    + "modo_prueba = true: ningún cobro es real (tarjetas de prueba).")
+            description = "modo: simulado o mercadopago. mercadopago_llave_publica sirve para abrir el formulario de pago "
+                    + "(Bricks); no es secreta. modo_prueba = true: ningún cobro es real (tarjetas de prueba). metodos: "
+                    + "TARJETA y YAPE disponibles; PLIN con disponible = false y nota \"Próximamente\" (mostrarlo deshabilitado).")
     @GetMapping("/api/public/pagos/config")
     public ConfiguracionPagos configuracion() {
         if ("mercadopago".equalsIgnoreCase(pagos.modo()) && mercadoPago.configurada()) {
-            return new ConfiguracionPagos("mercadopago", null, mercadoPago.llavePublica(), mercadoPago.modoPrueba(), "PEN");
+            return new ConfiguracionPagos("mercadopago", mercadoPago.llavePublica(), mercadoPago.modoPrueba(), "PEN", METODOS);
         }
-        if ("culqi".equalsIgnoreCase(pagos.modo()) && culqi.configurada()) {
-            return new ConfiguracionPagos("culqi", culqi.llavePublica(), null, culqi.modoPrueba(), "PEN");
-        }
-        return new ConfiguracionPagos("simulado", null, null, true, "PEN");
+        return new ConfiguracionPagos("simulado", null, true, "PEN", METODOS);
     }
 
     @Operation(summary = "Aviso (webhook) de Mercado Pago",
@@ -66,20 +72,6 @@ public class PagosController {
             return ResponseEntity.ok(Map.of("resultado", r.name()));
         } catch (MercadoPagoNoDisponible e) {
             log.warn("Aviso de Mercado Pago sin procesar: no respondió ({})", e.getMessage());
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("resultado", "REINTENTAR"));
-        }
-    }
-
-    @Operation(summary = "Aviso (webhook) de Culqi",
-            description = "Lo llama Culqi, no el frontend. No se confía en el cuerpo: se consulta el cargo a Culqi con la llave "
-                    + "secreta antes de confirmar nada. 200 si se procesó o se ignoró; 503 si Culqi no respondió (Culqi reintenta).")
-    @PostMapping("/api/pagos/webhook/culqi")
-    public ResponseEntity<Map<String, String>> avisoCulqi(@RequestBody(required = false) String cuerpo) {
-        try {
-            ResultadoAviso r = pagos.procesarAvisoCulqi(cuerpo == null ? "" : cuerpo);
-            return ResponseEntity.ok(Map.of("resultado", r.name()));
-        } catch (CulqiNoDisponible e) {
-            log.warn("Aviso de Culqi sin procesar: Culqi no respondió ({})", e.getMessage());
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("resultado", "REINTENTAR"));
         }
     }

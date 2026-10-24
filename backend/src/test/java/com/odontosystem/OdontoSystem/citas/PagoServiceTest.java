@@ -9,6 +9,7 @@ import com.odontosystem.OdontoSystem.entity.EventoPagoWebhook;
 import com.odontosystem.OdontoSystem.entity.IntentoPago;
 import com.odontosystem.OdontoSystem.entity.MetodoPago;
 import com.odontosystem.OdontoSystem.entity.Pago;
+import com.odontosystem.OdontoSystem.entity.PasarelaPago;
 import com.odontosystem.OdontoSystem.entity.PerfilOdontologo;
 import com.odontosystem.OdontoSystem.entity.Usuario;
 import com.odontosystem.OdontoSystem.repository.CitaRepository;
@@ -62,13 +63,9 @@ class PagoServiceTest {
     @BeforeEach
     void setUp() {
         servicio = new PagoService(citaRepository, pagoRepository, intentoRepository, eventoRepository,
-                citaService, pasarela, culqiSinLlaves(), reembolsos, reloj, "simulado");
+                citaService, pasarela, reembolsos, reloj, "simulado");
         paciente = Usuario.builder().id(UUID.randomUUID()).build();
         perfil = PerfilOdontologo.builder().usuarioId(UUID.randomUUID()).build();
-    }
-
-    private static PasarelaCulqi culqiSinLlaves() {
-        return new PasarelaCulqi("", "", org.springframework.web.client.RestClient.builder());
     }
 
     private Cita cita(EstadoCita estado, int minutosDesdeReserva) {
@@ -113,6 +110,19 @@ class PagoServiceTest {
         verify(eventoRepository).saveAndFlush(aviso.capture());
         assertThat(aviso.getValue().isFirmaVerificada()).isTrue();
         assertThat(aviso.getValue().getEstado()).isEqualTo(EstadoWebhookPago.PROCESADO);
+        assertThat(aviso.getValue().getPasarelaPago()).isEqualTo(PasarelaPago.SIMULADA);
+        ArgumentCaptor<Pago> pago = ArgumentCaptor.forClass(Pago.class);
+        verify(pagoRepository, org.mockito.Mockito.atLeastOnce()).saveAndFlush(pago.capture());
+        assertThat(pago.getValue().getPasarelaPago()).isEqualTo(PasarelaPago.SIMULADA);
+    }
+
+    @Test
+    @DisplayName("Plin todavía no está disponible: 400 \"próximamente\" sin crear el pago")
+    void plinProximamente() {
+        assertThatThrownBy(() -> servicio.pagarDeposito(paciente.getId(), UUID.randomUUID(), MetodoPago.PLIN))
+                .satisfies(e -> assertThat(estado(e)).isEqualTo(400))
+                .hasMessageContaining("próximamente");
+        verify(pagoRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -149,10 +159,10 @@ class PagoServiceTest {
     }
 
     @Test
-    @DisplayName("Modo culqi sin llaves configuradas → 503")
+    @DisplayName("Un modo que ya no existe (p. ej. el antiguo culqi) → 503")
     void modoDesactivado() {
         var sinPagos = new PagoService(citaRepository, pagoRepository, intentoRepository, eventoRepository,
-                citaService, pasarela, culqiSinLlaves(), reembolsos, reloj, "culqi");
+                citaService, pasarela, reembolsos, reloj, "culqi");
         assertThatThrownBy(() -> sinPagos.pagarDeposito(paciente.getId(), UUID.randomUUID(), MetodoPago.YAPE))
                 .satisfies(e -> assertThat(estado(e)).isEqualTo(503));
     }

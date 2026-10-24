@@ -71,7 +71,7 @@ public class SecurityConfig {
                 // 5. Permite el acceso a las rutas de autenticación, públicas, Swagger y al manejo de errores
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/public/**", "/error").permitAll()
-                        // Avisos de la pasarela: los manda Culqi sin token; se verifican consultando el cargo a Culqi
+                        // Avisos de la pasarela: los manda Mercado Pago sin token; se verifican consultando la orden a Mercado Pago
                         .requestMatchers(HttpMethod.POST, "/api/pagos/webhook/**").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // Documentos y fotos del consultorio: solo odontólogos

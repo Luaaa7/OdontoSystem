@@ -48,7 +48,6 @@ class ReembolsoMercadoPagoTest {
     @Mock private PagoRepository pagos;
     @Mock private ReembolsoRepository reembolsos;
     @Mock private CitaRepository citas;
-    @Mock private PasarelaCulqi culqi;
     @Mock private PasarelaMercadoPago mp;
 
     private final UUID citaId = UUID.randomUUID();
@@ -66,11 +65,11 @@ class ReembolsoMercadoPagoTest {
             return r;
         });
         when(mp.configurada()).thenReturn(true);
-        servicio = new ReembolsoService(pagos, reembolsos, citas, new PasarelaSimulada(), culqi, mp, RELOJ, "mercadopago");
+        servicio = new ReembolsoService(pagos, reembolsos, citas, new PasarelaSimulada(), mp, RELOJ, "mercadopago");
     }
 
     @Test
-    @DisplayName("Pide la devolución de la orden a Mercado Pago y queda REEMBOLSADO con su id; no llama a Culqi")
+    @DisplayName("Pide la devolución de la orden a Mercado Pago y queda REEMBOLSADO con su id")
     void devuelve() {
         when(mp.reembolsar(eq(ORDEN), anyString())).thenReturn("REF01");
 
@@ -79,7 +78,6 @@ class ReembolsoMercadoPagoTest {
         assertThat(r.estado()).isEqualTo(EstadoReembolso.REEMBOLSADO);
         assertThat(r.idExterno()).isEqualTo("REF01");
         assertThat(r.simulado()).isFalse();
-        verify(culqi, never()).reembolsar(anyString(), anyLong());
     }
 
     @Test
@@ -102,7 +100,7 @@ class ReembolsoMercadoPagoTest {
     @Test
     @DisplayName("Un cobro real de Mercado Pago se devuelve de verdad aunque el sistema esté ahora en modo simulado")
     void realEnModoSimulado() {
-        servicio = new ReembolsoService(pagos, reembolsos, citas, new PasarelaSimulada(), culqi, mp, RELOJ, "simulado");
+        servicio = new ReembolsoService(pagos, reembolsos, citas, new PasarelaSimulada(), mp, RELOJ, "simulado");
         when(mp.reembolsar(eq(ORDEN), anyString())).thenReturn("REF03");
 
         ReembolsoResponse r = servicio.reembolsarDeposito(citaId, "cancelacion:" + citaId, null).orElseThrow();

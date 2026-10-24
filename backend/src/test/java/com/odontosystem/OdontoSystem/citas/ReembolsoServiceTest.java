@@ -52,7 +52,7 @@ class ReembolsoServiceTest {
     @BeforeEach
     void setUp() {
         pago = Pago.builder().id(UUID.randomUUID()).monto(new BigDecimal("30.00"))
-                .pasarelaPago(PasarelaPago.CULQI).estado(EstadoPago.VERIFICADO).build();
+                .pasarelaPago(PasarelaPago.SIMULADA).estado(EstadoPago.VERIFICADO).build();
         when(pagos.findFirstByCita_IdAndEstado(citaId, EstadoPago.VERIFICADO)).thenReturn(Optional.of(pago));
         when(reembolsos.saveAndFlush(any(Reembolso.class))).thenAnswer(i -> {
             Reembolso r = i.getArgument(0);
@@ -62,8 +62,7 @@ class ReembolsoServiceTest {
     }
 
     private ReembolsoService servicio(String modo) {
-        return new ReembolsoService(pagos, reembolsos, citas, new PasarelaSimulada(),
-                new PasarelaCulqi("", "", org.springframework.web.client.RestClient.builder()), RELOJ, modo);
+        return new ReembolsoService(pagos, reembolsos, citas, new PasarelaSimulada(), RELOJ, modo);
     }
 
     @Test
@@ -79,9 +78,9 @@ class ReembolsoServiceTest {
     }
 
     @Test
-    @DisplayName("Con Culqi (aún sin conectar) queda SOLICITADO hasta que la pasarela confirme")
+    @DisplayName("En modo mercadopago, un pago que no es de Mercado Pago queda SOLICITADO para revisión manual")
     void reembolsoReal() {
-        ReembolsoResponse r = servicio("culqi").reembolsarDeposito(citaId, "cancelacion:" + citaId, null).orElseThrow();
+        ReembolsoResponse r = servicio("mercadopago").reembolsarDeposito(citaId, "cancelacion:" + citaId, null).orElseThrow();
 
         assertThat(r.estado()).isEqualTo(EstadoReembolso.SOLICITADO);
         assertThat(r.idExterno()).isNull();

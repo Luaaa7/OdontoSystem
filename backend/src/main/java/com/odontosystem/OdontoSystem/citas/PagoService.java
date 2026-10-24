@@ -3,8 +3,6 @@ package com.odontosystem.OdontoSystem.citas;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.odontosystem.OdontoSystem.citas.CitaDtos.CitaResponse;
-import com.odontosystem.OdontoSystem.citas.PasarelaCulqi.Cargo;
-import com.odontosystem.OdontoSystem.citas.PasarelaCulqi.CulqiNoDisponible;
 import com.odontosystem.OdontoSystem.citas.PasarelaMercadoPago.MercadoPagoNoDisponible;
 import com.odontosystem.OdontoSystem.citas.PasarelaMercadoPago.Orden;
 import com.odontosystem.OdontoSystem.citas.PasarelaSimulada.Cobro;
@@ -34,7 +32,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.OffsetDateTime;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,24 +47,22 @@ import java.util.UUID;
  * Dos modos (PAGOS_MODO):
  * <ul>
  *   <li>{@code simulado}: {@link PasarelaSimulada} aprueba todo y firma su aviso con HMAC.</li>
- *   <li>{@code culqi}: el frontend tokeniza la tarjeta o el Yape con Culqi Checkout y manda el token; el backend
- *       crea el cargo con la llave secreta. La respuesta de la API (HTTPS + nuestra llave secreta) es la
- *       confirmación verificada. Si Culqi no responde, el pago queda PENDIENTE y lo cierra el aviso (webhook),
- *       que también se verifica consultando el cargo a Culqi.</li>
- *   <li>{@code mercadopago}: igual, con la API de Orders de Mercado Pago. El frontend tokeniza con MercadoPago.js /
- *       Bricks y manda el token y el medio ({@code visa}, {@code master}, {@code debvisa}, {@code yape}…). El aviso
- *       (webhook) se verifica consultando la orden a Mercado Pago.</li>
+ *   <li>{@code mercadopago}: API de Orders de Mercado Pago. El frontend tokeniza con MercadoPago.js / Bricks y manda
+ *       el token y el medio ({@code visa}, {@code master}, {@code debvisa}, {@code yape}…); el backend crea la orden con
+ *       el Access Token. La respuesta de la API (HTTPS + nuestro token) es la confirmación verificada. Si Mercado Pago
+ *       no responde, el pago queda PENDIENTE y lo cierra el aviso (webhook), que se verifica consultando la orden.</li>
  * </ul>
+ * Plin todavía no lo cobra ninguna pasarela: se rechaza en cualquier modo ("próximamente").
  */
 @Service
 public class PagoService {
 
     private static final Logger log = LoggerFactory.getLogger(PagoService.class);
     private static final ObjectMapper JSON = new ObjectMapper();
+    static final String PLIN_PROXIMAMENTE = "Plin estará disponible próximamente; por ahora paga con tarjeta o Yape";
 
     /**
-     * token: el que entrega la pasarela al tokenizar (Culqi: {@code tkn_…} / {@code ype_…}; Mercado Pago: el token de
-     * MercadoPago.js o Bricks). medioPagoId: solo Mercado Pago, el medio que devuelve el Brick ({@code visa},
+     * token: el que entrega Mercado Pago al tokenizar (MercadoPago.js o Bricks). medioPagoId: solo Mercado Pago, el medio que devuelve el Brick ({@code visa},
      * {@code master}, {@code debvisa}, {@code yape}…). En modo simulado no hace falta ninguno.
      */
     public record PagoRequest(@jakarta.validation.constraints.NotNull MetodoPago metodo,
@@ -96,25 +91,24 @@ public class PagoService {
     private final EventoPagoWebhookRepository eventoRepository;
     private final CitaService citaService;
     private final PasarelaSimulada pasarela;
-    private final PasarelaCulqi culqi;
     private final PasarelaMercadoPago mercadoPago;
     private final ReembolsoService reembolsos;
     private final Clock clock;
     private final String modo;
 
-    /** Sin Mercado Pago (simulado o Culqi). */
+    /** Sin Mercado Pago (solo el modo simulado). */
     public PagoService(CitaRepository citaRepository, PagoRepository pagoRepository,
                        IntentoPagoRepository intentoRepository, EventoPagoWebhookRepository eventoRepository,
-                       CitaService citaService, PasarelaSimulada pasarela, PasarelaCulqi culqi,
+                       CitaService citaService, PasarelaSimulada pasarela,
                        ReembolsoService reembolsos, Clock clock, String modo) {
-        this(citaRepository, pagoRepository, intentoRepository, eventoRepository, citaService, pasarela, culqi,
+        this(citaRepository, pagoRepository, intentoRepository, eventoRepository, citaService, pasarela,
                 PasarelaMercadoPago.sinConfigurar(), reembolsos, clock, modo);
     }
 
     @Autowired
     public PagoService(CitaRepository citaRepository, PagoRepository pagoRepository,
                        IntentoPagoRepository intentoRepository, EventoPagoWebhookRepository eventoRepository,
-                       CitaService citaService, PasarelaSimulada pasarela, PasarelaCulqi culqi,
+                       CitaService citaService, PasarelaSimulada pasarela,
                        PasarelaMercadoPago mercadoPago, ReembolsoService reembolsos, Clock clock,
                        @Value("${app.pagos.modo:simulado}") String modo) {
         this.citaRepository = citaRepository;
@@ -123,7 +117,6 @@ public class PagoService {
         this.eventoRepository = eventoRepository;
         this.citaService = citaService;
         this.pasarela = pasarela;
-        this.culqi = culqi;
         this.mercadoPago = mercadoPago;
         this.reembolsos = reembolsos;
         this.clock = clock;
@@ -147,13 +140,12 @@ public class PagoService {
 
     @Transactional
     public PagoResponse pagarDeposito(UUID pacienteId, UUID citaId, MetodoPago metodo, String token, String medioPagoId) {
-        boolean conCulqi = "culqi".equalsIgnoreCase(modo);
         boolean conMercadoPago = "mercadopago".equalsIgnoreCase(modo);
-        if (!conCulqi && !conMercadoPago && !"simulado".equalsIgnoreCase(modo)) {
+        if (!conMercadoPago && !"simulado".equalsIgnoreCase(modo)) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Los pagos en línea aún no están habilitados");
         }
-        if (conCulqi) {
-            validarParaCulqi(metodo, token);
+        if (metodo == MetodoPago.PLIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, PLIN_PROXIMAMENTE);
         }
         if (conMercadoPago) {
             validarParaMercadoPago(metodo, token, medioPagoId);
@@ -161,7 +153,7 @@ public class PagoService {
         Cita cita = citaPendienteDePago(pacienteId, citaId);
         OffsetDateTime ahora = OffsetDateTime.now(clock);
 
-        PasarelaPago procesador = conMercadoPago ? PasarelaPago.MERCADO_PAGO : PasarelaPago.CULQI;
+        PasarelaPago procesador = conMercadoPago ? PasarelaPago.MERCADO_PAGO : PasarelaPago.SIMULADA;
         BigDecimal monto = cita.getMontoDepositoRequerido();
         Pago pago = pagoRepository.saveAndFlush(Pago.builder()
                 .cita(cita).metodoPago(metodo).pasarelaPago(procesador)
@@ -171,9 +163,6 @@ public class PagoService {
                 .claveIdempotencia(citaId + ":" + UUID.randomUUID())
                 .monto(monto).estado(EstadoIntentoPago.PENDIENTE).build());
 
-        if (conCulqi) {
-            return cobrarConCulqi(cita, pago, intento, metodo, token, ahora);
-        }
         if (conMercadoPago) {
             return cobrarConMercadoPago(cita, pago, intento, metodo, token, medioPagoId, ahora);
         }
@@ -191,149 +180,6 @@ public class PagoService {
     }
 
     // ==================================================================
-    // Culqi
-    // ==================================================================
-
-    private void validarParaCulqi(MetodoPago metodo, String token) {
-        if (!culqi.configurada()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Los pagos en línea no están disponibles en este momento");
-        }
-        if (metodo == MetodoPago.PLIN) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Plin todavía no está disponible; paga con tarjeta o Yape");
-        }
-        if (token == null || token.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Falta el token de Culqi: abre el formulario de pago y vuelve a intentarlo");
-        }
-        String esperado = metodo == MetodoPago.YAPE ? "ype_" : "tkn_";
-        if (!token.strip().startsWith(esperado)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "El token no corresponde al medio de pago elegido (" + metodo + ")");
-        }
-    }
-
-    private PagoResponse cobrarConCulqi(Cita cita, Pago pago, IntentoPago intento, MetodoPago metodo, String token,
-                                        OffsetDateTime ahora) {
-        long centimos = centimos(pago.getMonto());
-        Map<String, String> metadata = Map.of(
-                "cita_id", cita.getId().toString(),
-                "pago_id", pago.getId().toString(),
-                "intento_id", intento.getId().toString());
-        Cargo cargo;
-        try {
-            cargo = culqi.cobrar(token.strip(), centimos, cita.getPaciente().getCorreo(),
-                    "Deposito de cita OdontoSystem", metadata);
-        } catch (CulqiNoDisponible e) {
-            // No sabemos si cobró: el pago queda PENDIENTE y lo cierra el aviso de Culqi.
-            log.warn("Culqi no respondió al cobrar el pago {}: {}", pago.getId(), e.getMessage());
-            intento.setMensajeError("Culqi no respondió: " + e.getMessage());
-            intentoRepository.saveAndFlush(intento);
-            return respuesta(pago, metodo, null,
-                    "Estamos confirmando tu pago con el banco. Te avisaremos en unos minutos; no vuelvas a pagar.");
-        }
-
-        if (!cargo.aprobado()) {
-            intento.setIdExterno(cargo.id());
-            intento.setEstado(EstadoIntentoPago.RECHAZADO);
-            intento.setMensajeError(cargo.codigo() + ": " + cargo.mensajeUsuario());
-            intentoRepository.saveAndFlush(intento);
-            pago.setEstado(EstadoPago.RECHAZADO);
-            pagoRepository.saveAndFlush(pago);
-            return respuesta(pago, metodo, null, cargo.mensajeUsuario());
-        }
-        if (cargo.montoCentimos() != centimos) {
-            // No debería pasar nunca: se cobró otro monto. No se confirma la cita.
-            log.error("Culqi cobró {} céntimos para el pago {} (esperado {})", cargo.montoCentimos(), pago.getId(), centimos);
-            intento.setIdExterno(cargo.id());
-            intento.setMensajeError("Monto distinto: " + cargo.montoCentimos());
-            intentoRepository.saveAndFlush(intento);
-            return respuesta(pago, metodo, null, "Estamos revisando tu pago. Te avisaremos en unos minutos.");
-        }
-
-        confirmarCargo(pago, intento, cargo, "api:" + cargo.id(), "charge.creation.succeeded (respuesta de la API)", ahora);
-        CitaResponse citaActualizada = marcarPagado(pago, cargo.id(), ahora);
-        return respuesta(pago, metodo, citaActualizada, cargo.mensajeUsuario() == null ? "Pago aprobado" : cargo.mensajeUsuario());
-    }
-
-    /**
-     * Aviso (webhook) de Culqi. No se cree en el cuerpo: se toma el id del cargo y se consulta a Culqi con la llave
-     * secreta. Así nadie puede confirmar un pago mandando un aviso falso. Es idempotente.
-     */
-    @Transactional
-    public ResultadoAviso procesarAvisoCulqi(String cuerpo) {
-        if (!culqi.configurada()) {
-            return ResultadoAviso.IGNORADO;
-        }
-        JsonNode evento;
-        try {
-            evento = JSON.readTree(cuerpo);
-        } catch (Exception e) {
-            return ResultadoAviso.IGNORADO;
-        }
-        String eventoId = evento.path("id").asText("");
-        String tipo = evento.path("type").asText("");
-        if (eventoId.isBlank() || !tipo.startsWith("charge.")) {
-            return ResultadoAviso.IGNORADO;
-        }
-        if (eventoRepository.existsByPasarelaPagoAndEventoExternoId(PasarelaPago.CULQI, eventoId)) {
-            return ResultadoAviso.YA_PROCESADO;
-        }
-        String cargoId = idCargo(evento.path("data"));
-        if (cargoId == null) {
-            return ResultadoAviso.IGNORADO;
-        }
-
-        Optional<Cargo> consultado = culqi.consultarCargo(cargoId); // CulqiNoDisponible → el webhook responde 503 y Culqi reintenta
-        if (consultado.isEmpty()) {
-            return ResultadoAviso.IGNORADO;
-        }
-        Cargo cargo = consultado.get();
-        Optional<IntentoPago> buscado = uuid(cargo.metadata().get("intento_id")).flatMap(intentoRepository::findById);
-        if (buscado.isEmpty()) {
-            log.info("Aviso de Culqi {} sobre un cargo {} que no es de OdontoSystem", eventoId, cargoId);
-            return ResultadoAviso.IGNORADO;
-        }
-        IntentoPago intento = buscado.get();
-        Pago pago = intento.getPago();
-        OffsetDateTime ahora = OffsetDateTime.now(clock);
-
-        if (pago.getEstado() != EstadoPago.PENDIENTE) {
-            registrarAviso(pago, intento, eventoId, tipo, cuerpo, EstadoWebhookPago.IGNORADO, ahora,
-                    "El pago ya estaba " + pago.getEstado());
-            return ResultadoAviso.YA_PROCESADO;
-        }
-        if (!cargo.aprobado() || cargo.montoCentimos() != centimos(pago.getMonto())) {
-            registrarAviso(pago, intento, eventoId, tipo, cuerpo, EstadoWebhookPago.ERROR, ahora,
-                    cargo.aprobado() ? "Monto distinto: " + cargo.montoCentimos() : "Cargo no aprobado: " + cargo.codigo());
-            if (!cargo.aprobado()) {
-                intento.setEstado(EstadoIntentoPago.RECHAZADO);
-                intento.setIdExterno(cargoId);
-                intentoRepository.saveAndFlush(intento);
-                pago.setEstado(EstadoPago.RECHAZADO);
-                pagoRepository.saveAndFlush(pago);
-            }
-            return ResultadoAviso.RECHAZADO;
-        }
-
-        confirmarCargo(pago, intento, cargo, eventoId, tipo, ahora);
-        Cita cita = pago.getCita();
-        if (cita.getEstado() == EstadoCita.PENDIENTE_PAGO) {
-            marcarPagado(pago, cargoId, ahora);
-            return ResultadoAviso.CONFIRMADO;
-        }
-        // El cobro llegó cuando la reserva ya había vencido: se verifica el pago y se devuelve en el acto.
-        pago.setEstado(EstadoPago.VERIFICADO);
-        pago.setNumeroOperacion(cargoId);
-        pago.setVerificadoEn(ahora);
-        pagoRepository.saveAndFlush(pago);
-        reembolsos.reembolsarDeposito(cita.getId(), "pago-tardio:" + pago.getId(),
-                "El pago llegó cuando la reserva ya había vencido");
-        return ResultadoAviso.CONFIRMADO_Y_DEVUELTO;
-    }
-
-    // ==================================================================
     // Mercado Pago (API de Orders)
     // ==================================================================
 
@@ -341,10 +187,6 @@ public class PagoService {
         if (!mercadoPago.configurada()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Los pagos en línea no están disponibles en este momento");
-        }
-        if (metodo == MetodoPago.PLIN) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Plin todavía no está disponible; paga con tarjeta o Yape");
         }
         if (token == null || token.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -527,17 +369,6 @@ public class PagoService {
         return cita;
     }
 
-    /** Intento APROBADO + aviso PROCESADO (verificado), que es lo que la BD exige antes de VERIFICADO. */
-    private void confirmarCargo(Pago pago, IntentoPago intento, Cargo cargo, String eventoId, String tipo,
-                                OffsetDateTime ahora) {
-        intento.setIdExterno(cargo.id());
-        intento.setEstado(EstadoIntentoPago.APROBADO);
-        intento.setConfirmadoEn(ahora);
-        intento.setMensajeError(null);
-        intentoRepository.saveAndFlush(intento);
-        registrarAviso(pago, intento, eventoId, tipo, cargo.json(), EstadoWebhookPago.PROCESADO, ahora, null);
-    }
-
     /** Pago VERIFICADO y la cita pasa a CONFIRMADA o PENDIENTE_CONFIRMACION. */
     private CitaResponse marcarPagado(Pago pago, String numeroOperacion, OffsetDateTime ahora) {
         pago.setEstado(EstadoPago.VERIFICADO);
@@ -552,14 +383,9 @@ public class PagoService {
     }
 
     /**
-     * Para Culqi la autenticidad se verifica con la API (HTTPS y nuestra llave secreta), no con una firma:
+     * Con Mercado Pago la autenticidad se verifica con la API (HTTPS y nuestro Access Token), no con una firma:
      * {@code firma_verificada} significa "confirmado por la pasarela".
      */
-    private void registrarAviso(Pago pago, IntentoPago intento, String eventoId, String tipo, String payload,
-                                EstadoWebhookPago estado, OffsetDateTime ahora, String error) {
-        registrarAviso(PasarelaPago.CULQI, pago, intento, eventoId, tipo, payload, estado, ahora, error);
-    }
-
     private void registrarAviso(PasarelaPago procesador, Pago pago, IntentoPago intento, String eventoId, String tipo,
                                 String payload, EstadoWebhookPago estado, OffsetDateTime ahora, String error) {
         boolean verificado = estado == EstadoWebhookPago.PROCESADO || estado == EstadoWebhookPago.IGNORADO;
@@ -568,8 +394,7 @@ public class PagoService {
                 .eventoExternoId(eventoId.length() > 150 ? eventoId.substring(0, 150) : eventoId)
                 .tipoEvento(tipo.length() > 100 ? tipo.substring(0, 100) : tipo)
                 .payloadJson(jsonValido(payload))
-                .firmaRecibida(procesador == PasarelaPago.MERCADO_PAGO
-                        ? "verificado consultando la API de Mercado Pago" : "verificado consultando la API de Culqi")
+                .firmaRecibida("verificado consultando la API de Mercado Pago")
                 .firmaVerificada(verificado)
                 .estado(estado)
                 .procesadoEn(verificado ? ahora : null)
@@ -581,7 +406,7 @@ public class PagoService {
     private void registrarAvisoSimulado(Pago pago, IntentoPago intento, Cobro cobro) {
         boolean firmaOk = pasarela.firmaValida(cobro.payload(), cobro.firma());
         eventoRepository.saveAndFlush(EventoPagoWebhook.builder()
-                .pago(pago).intentoPago(intento).pasarelaPago(PasarelaPago.CULQI)
+                .pago(pago).intentoPago(intento).pasarelaPago(PasarelaPago.SIMULADA)
                 .eventoExternoId(cobro.eventoId())
                 .tipoEvento("charge.succeeded (simulado)")
                 .payloadJson(cobro.payload())
@@ -603,17 +428,6 @@ public class PagoService {
 
     static long centimos(BigDecimal monto) {
         return monto.movePointRight(2).setScale(0, java.math.RoundingMode.HALF_UP).longValueExact();
-    }
-
-    /** El cargo puede venir como objeto o como texto JSON dentro de "data". */
-    private static String idCargo(JsonNode data) {
-        try {
-            JsonNode cargo = data.isTextual() ? JSON.readTree(data.asText()) : data;
-            String id = cargo.path("id").asText("");
-            return id.startsWith("chr_") ? id : null;
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private static Optional<UUID> uuid(String texto) {

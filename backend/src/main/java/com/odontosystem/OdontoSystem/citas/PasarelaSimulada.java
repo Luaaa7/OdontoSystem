@@ -12,9 +12,9 @@ import java.util.HexFormat;
 import java.util.UUID;
 
 /**
- * Pasarela de pago SIMULADA para la demo, mientras no estén las llaves de Culqi.
- * Hace lo mismo que hará Culqi: aprueba el cobro y emite un aviso (webhook) firmado con HMAC-SHA256.
- * El backend verifica esa firma igual que verificará la de Culqi, así que el resto del flujo
+ * Pasarela de pago SIMULADA para la demo (PAGOS_MODO=simulado), mientras el frontend no use Mercado Pago.
+ * Aprueba el cobro y emite un aviso (webhook) firmado con HMAC-SHA256, como una pasarela real.
+ * El backend verifica esa firma antes de confirmar, así que el resto del flujo
  * (aviso registrado → pago VERIFICADO → cita CONFIRMADA) es el definitivo.
  * La llave se genera al arrancar y nunca sale del servidor: nadie de afuera puede fabricar un aviso válido.
  */

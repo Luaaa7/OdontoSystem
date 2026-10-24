@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Cada 30 minutos: reintenta en Culqi las devoluciones que quedaron pendientes porque Culqi no respondió (RF15). */
+/** Cada 30 minutos: reintenta en Mercado Pago las devoluciones que quedaron pendientes porque no respondió (RF15). */
 @Component
 public class TareasReembolsos {
 
@@ -22,7 +22,7 @@ public class TareasReembolsos {
         try {
             int n = reembolsos.reintentarSolicitados();
             if (n > 0) {
-                log.info("Se completaron {} devoluciones pendientes en Culqi", n);
+                log.info("Se completaron {} devoluciones pendientes en Mercado Pago", n);
             }
         } catch (RuntimeException e) {
             log.error("Falló el reintento de devoluciones", e);

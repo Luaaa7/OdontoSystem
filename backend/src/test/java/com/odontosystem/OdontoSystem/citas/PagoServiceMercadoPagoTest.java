@@ -63,7 +63,6 @@ class PagoServiceMercadoPagoTest {
     @Mock private IntentoPagoRepository intentoRepository;
     @Mock private EventoPagoWebhookRepository eventoRepository;
     @Mock private CitaService citaService;
-    @Mock private PasarelaCulqi culqi;
     @Mock private PasarelaMercadoPago mp;
     @Mock private ReembolsoService reembolsos;
 
@@ -75,7 +74,7 @@ class PagoServiceMercadoPagoTest {
     @BeforeEach
     void setUp() {
         servicio = new PagoService(citaRepository, pagoRepository, intentoRepository, eventoRepository, citaService,
-                new PasarelaSimulada(), culqi, mp, reembolsos, reloj, "mercadopago");
+                new PasarelaSimulada(), mp, reembolsos, reloj, "mercadopago");
         paciente = Usuario.builder().id(UUID.randomUUID()).correo("lucia@correo.pe").build();
         cita = Cita.builder().id(UUID.randomUUID()).paciente(paciente)
                 .odontologo(PerfilOdontologo.builder().usuarioId(UUID.randomUUID()).build())

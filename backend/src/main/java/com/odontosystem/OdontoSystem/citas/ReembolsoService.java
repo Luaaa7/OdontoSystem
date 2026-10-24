@@ -31,9 +31,9 @@ import java.util.UUID;
  *   <li>Al aprobarse una apelación por inasistencia (la ausencia estaba justificada).</li>
  * </ul>
  * Es idempotente: cada motivo usa una clave propia ("cancelacion:&lt;cita&gt;") y la BD no permite repetirla.
- * Con la pasarela simulada el reembolso queda REEMBOLSADO en el acto. Con Culqi se pide la devolución a su API
- * ({@code POST /refunds}) y queda REEMBOLSADO si Culqi la acepta; si Culqi no responde queda SOLICITADO.
- * Con Mercado Pago es igual, con {@code POST /v1/orders/{id}/refund}.
+ * Con la pasarela simulada el reembolso queda REEMBOLSADO en el acto. Con Mercado Pago se pide la devolución a su API
+ * ({@code POST /v1/orders/{id}/refund}) y queda REEMBOLSADO si la acepta; si no responde queda SOLICITADO y se
+ * reintenta cada 30 minutos.
  */
 @Service
 public class ReembolsoService {
@@ -48,29 +48,26 @@ public class ReembolsoService {
     private final ReembolsoRepository reembolsoRepository;
     private final CitaRepository citaRepository;
     private final PasarelaSimulada pasarela;
-    private final PasarelaCulqi culqi;
     private final PasarelaMercadoPago mercadoPago;
     private final Clock clock;
     private final String modo;
 
-    /** Sin Mercado Pago (simulado o Culqi). */
+    /** Sin Mercado Pago (solo el modo simulado). */
     public ReembolsoService(PagoRepository pagoRepository, ReembolsoRepository reembolsoRepository,
-                            CitaRepository citaRepository, PasarelaSimulada pasarela, PasarelaCulqi culqi, Clock clock,
-                            String modo) {
-        this(pagoRepository, reembolsoRepository, citaRepository, pasarela, culqi, PasarelaMercadoPago.sinConfigurar(),
+                            CitaRepository citaRepository, PasarelaSimulada pasarela, Clock clock, String modo) {
+        this(pagoRepository, reembolsoRepository, citaRepository, pasarela, PasarelaMercadoPago.sinConfigurar(),
                 clock, modo);
     }
 
     @Autowired
     public ReembolsoService(PagoRepository pagoRepository, ReembolsoRepository reembolsoRepository,
-                            CitaRepository citaRepository, PasarelaSimulada pasarela, PasarelaCulqi culqi,
+                            CitaRepository citaRepository, PasarelaSimulada pasarela,
                             PasarelaMercadoPago mercadoPago, Clock clock,
                             @Value("${app.pagos.modo:simulado}") String modo) {
         this.pagoRepository = pagoRepository;
         this.reembolsoRepository = reembolsoRepository;
         this.citaRepository = citaRepository;
         this.pasarela = pasarela;
-        this.culqi = culqi;
         this.mercadoPago = mercadoPago;
         this.clock = clock;
         this.modo = modo;
@@ -120,7 +117,7 @@ public class ReembolsoService {
      */
     @Transactional
     public int reintentarSolicitados() {
-        if (!culqi.configurada() && !mercadoPago.configurada()) {
+        if (!mercadoPago.configurada()) {
             return 0;
         }
         int hechos = 0;
@@ -132,9 +129,14 @@ public class ReembolsoService {
         return hechos;
     }
 
+    /** Solo Mercado Pago cobra de verdad; un pago de otra pasarela (p. ej. pruebas antiguas de Culqi) queda SOLICITADO. */
     private Reembolso pedirALaPasarela(Reembolso reembolso) {
-        return reembolso.getPago().getPasarelaPago() == PasarelaPago.MERCADO_PAGO
-                ? pedirAMercadoPago(reembolso) : pedirACulqi(reembolso);
+        if (reembolso.getPago().getPasarelaPago() == PasarelaPago.MERCADO_PAGO) {
+            return pedirAMercadoPago(reembolso);
+        }
+        log.warn("El pago {} no es de Mercado Pago ({}): la devolución queda SOLICITADO para revisión manual",
+                reembolso.getPago().getId(), reembolso.getPago().getPasarelaPago());
+        return reembolso;
     }
 
     /** Pide la devolución a Mercado Pago; si no responde, el reembolso queda SOLICITADO para el siguiente intento. */
@@ -155,24 +157,6 @@ public class ReembolsoService {
         }
     }
 
-    /** Pide la devolución a Culqi; si Culqi no responde, el reembolso queda SOLICITADO para el siguiente intento. */
-    private Reembolso pedirACulqi(Reembolso reembolso) {
-        Pago pago = reembolso.getPago();
-        String operacion = pago.getNumeroOperacion();
-        if (!culqi.configurada() || operacion == null || !operacion.startsWith("chr_")) {
-            return reembolso;
-        }
-        try {
-            reembolso.setIdExterno(culqi.reembolsar(operacion, PagoService.centimos(reembolso.getMonto())));
-            reembolso.setEstado(EstadoReembolso.REEMBOLSADO);
-            reembolso.setProcesadoEn(OffsetDateTime.now(clock));
-            return reembolsoRepository.saveAndFlush(reembolso); // el trigger pasa el pago a REEMBOLSADO
-        } catch (PasarelaCulqi.CulqiNoDisponible e) {
-            log.warn("Culqi no aceptó la devolución del pago {}: queda SOLICITADO ({})", pago.getId(), e.getMessage());
-            return reembolso;
-        }
-    }
-
     /** Reembolsos de una cita; los ve el paciente o el odontólogo de la cita. */
     @Transactional(readOnly = true)
     public List<ReembolsoResponse> deCita(UUID usuarioId, UUID citaId) {
@@ -186,9 +170,9 @@ public class ReembolsoService {
         return "simulado".equalsIgnoreCase(modo);
     }
 
-    /** Cobro hecho de verdad en una pasarela (aunque ahora el sistema esté en modo simulado). */
+    /** Cobro hecho de verdad en Mercado Pago (aunque ahora el sistema esté en modo simulado). */
     private static boolean esOperacionReal(String operacion) {
-        return operacion != null && (operacion.startsWith("chr_") || operacion.startsWith("ORD"));
+        return operacion != null && operacion.startsWith("ORD");
     }
 
     private ReembolsoResponse aRespuesta(Reembolso r) {
