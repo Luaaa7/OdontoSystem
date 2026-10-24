@@ -68,11 +68,6 @@ public class NotificacionService {
     private static final Locale ES = Locale.of("es", "PE");
     private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", ES);
     private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm");
-    /**
-     * Duración de la suspensión: es el valor por defecto del parámetro
-     * DIAS_SUSPENSION_STRIKES.
-     */
-    private static final int DIAS_SUSPENSION = 30;
 
     private final RecordatorioCitaRepository recordatorioRepository;
     private final RegistroNotificacionRepository registroRepository;
@@ -230,21 +225,25 @@ public class NotificacionService {
             return;
         }
         boolean suspendido = evento.restringidoHasta() != null && evento.strikes() >= evento.limite();
+        boolean repetido = suspendido && evento.repetido();
         Map<String, Object> v = new HashMap<>();
         v.put("nombre", primerNombre(evento.nombre()));
         v.put("strikes", evento.strikes());
         v.put("limite", evento.limite());
         v.put("suspendido", suspendido);
-        v.put("dias", DIAS_SUSPENSION);
+        v.put("repetido", repetido);
+        v.put("dias", evento.diasSuspension());
         if (suspendido) {
             v.put("hasta", FECHA.format(evento.restringidoHasta().atZoneSameInstant(ZONA)));
         }
-        String asunto = suspendido
+        String asunto = repetido
+                ? "Registramos otra inasistencia: tu suspensión sigue vigente"
+                : suspendido
                 ? "Tu cuenta quedó suspendida por strikes"
                 : "Registramos un strike en tu cuenta (" + evento.strikes() + " de " + evento.limite() + ")";
         enviar(new Correo(evento.pacienteId(), evento.correo(), evento.nombre(), asunto,
                 plantillas.armar("alerta-strike", v), TipoNotificacion.ALERTA_STRIKE,
-                suspendido ? "Cuenta suspendida" : "Strike en tu cuenta"));
+                repetido ? "Suspensión vigente" : suspendido ? "Cuenta suspendida" : "Strike en tu cuenta"));
     }
 
     private Optional<Correo> avisoPara(Cita cita, CitaCambioEstado evento) {

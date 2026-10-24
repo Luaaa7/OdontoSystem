@@ -13,9 +13,13 @@
           Registramos un <strong>strike</strong> en tu cuenta por una inasistencia o una cancelación
           de último momento.
         </p>
-        <p th:if="${suspendido}" style="margin:0 0 16px;line-height:1.5;">
+        <p th:if="${suspendido and !repetido}" style="margin:0 0 16px;line-height:1.5;">
           Registramos un <strong>strike</strong> en tu cuenta por una inasistencia o una cancelación
           de último momento, y con este llegaste al límite.
+        </p>
+        <p th:if="${repetido}" style="margin:0 0 16px;line-height:1.5;">
+          Registramos <strong>otra inasistencia</strong> o cancelación de último momento en tu cuenta.
+          Tu cuenta ya estaba suspendida: la suspensión no se alarga, pero la falta queda en tu historial.
         </p>
 
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"

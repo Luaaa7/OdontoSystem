@@ -406,6 +406,35 @@ class NotificacionServiceTest {
         }
 
         @Test
+        @DisplayName("Falta estando ya suspendido: el correo dice que la suspensión sigue vigente")
+        void avisoDeFaltaEstandoSuspendido() {
+                OffsetDateTime hasta = AHORA.plusDays(10);
+                StrikeSumado evento = new StrikeSumado(UUID.randomUUID(), "Lucía Ramos Peña", "lucia@correo.pe",
+                                (short) 3, (short) 3, hasta, 30, true);
+
+                servicio.avisarStrike(evento);
+
+                ArgumentCaptor<String> asunto = ArgumentCaptor.forClass(String.class);
+                ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
+                verify(enviador).enviar(eq("lucia@correo.pe"), any(), asunto.capture(), html.capture());
+                assertThat(asunto.getValue()).isEqualTo("Registramos otra inasistencia: tu suspensión sigue vigente");
+                assertThat(html.getValue()).contains("otra inasistencia").contains("No podrás reservar nuevas citas hasta")
+                                .doesNotContain("llegaste al límite");
+                verify(push).enviarAUsuario(eq(evento.pacienteId()), eq("Suspensión vigente"), anyString(), any());
+        }
+
+        @Test
+        @DisplayName("Los días del correo salen del evento (DIAS_SUSPENSION_STRIKES), no de un valor fijo")
+        void diasDelCorreoDesdeLaConfiguracion() {
+                servicio.avisarStrike(new StrikeSumado(UUID.randomUUID(), "Lucía Ramos Peña", "lucia@correo.pe",
+                                (short) 1, (short) 3, null, 15, false));
+
+                ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
+                verify(enviador).enviar(eq("lucia@correo.pe"), any(), any(), html.capture());
+                assertThat(html.getValue()).contains("suspendida por <span>15</span> días");
+        }
+
+        @Test
         @DisplayName("Si el paciente no tiene correo, no se envía nada y no se rompe")
         void strikeSinCorreo() {
                 servicio.avisarStrike(

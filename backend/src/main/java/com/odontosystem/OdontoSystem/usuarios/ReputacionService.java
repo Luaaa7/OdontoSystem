@@ -91,25 +91,26 @@ public class ReputacionService {
             r.setRestringidoHasta(null);
         }
         int limite = limite();
+        int dias = parametros.entero(DIAS_SUSPENSION, 30);
         short antes = r.getCantidadStrikes();
         short strikes = (short) Math.min(limite, antes + 1);
         r.setCantidadStrikes(strikes);
         if (strikes >= limite) {
             r.setEstado(EstadoReputacion.BLOQUEADO);
             if (r.getRestringidoHasta() == null || !r.getRestringidoHasta().isAfter(ahora)) {
-                r.setRestringidoHasta(ahora.plusDays(parametros.entero(DIAS_SUSPENSION, 30)));
+                r.setRestringidoHasta(ahora.plusDays(dias));
             }
         } else {
             r.setEstado(EstadoReputacion.REGULAR);
         }
         r.setActualizadoEn(ahora);
         ReputacionPaciente guardada = reputacionRepository.save(r);
-        // Si ya estaba en el límite el contador no sube: no se avisa dos veces lo
-        // mismo.
-        if (strikes > antes) {
-            eventos.publishEvent(new StrikeSumado(paciente.getId(), paciente.getNombreCompleto(),
-                    paciente.getCorreo(), strikes, (short) limite, r.getRestringidoHasta()));
-        }
+        // Si ya estaba en el límite el contador no sube ni se alarga la suspensión, pero igual se le
+        // avisa que la falta quedó registrada (repetido = true).
+        boolean repetido = strikes == antes;
+        eventos.publishEvent(new StrikeSumado(paciente.getId(), paciente.getNombreCompleto(),
+                paciente.getCorreo(), strikes, (short) limite,
+                strikes >= limite ? r.getRestringidoHasta() : null, dias, repetido));
         return guardada;
     }
 

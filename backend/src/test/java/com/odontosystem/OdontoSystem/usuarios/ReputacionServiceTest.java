@@ -197,13 +197,34 @@ class ReputacionServiceTest {
     }
 
     @Test
-    @DisplayName("Si ya estaba en el límite, el contador no sube y no se vuelve a avisar")
-    void enElLimiteNoSeAvisaDeNuevo() {
-        conReputacion(3, EstadoReputacion.BLOQUEADO,
-                OffsetDateTime.now(Clock.fixed(AHORA, ZoneOffset.UTC)).plusDays(10));
+    @DisplayName("Si ya estaba en el límite, el contador no sube ni se alarga la suspensión, pero se avisa como repetido")
+    void enElLimiteSeAvisaComoRepetido() {
+        OffsetDateTime hasta = OffsetDateTime.now(Clock.fixed(AHORA, ZoneOffset.UTC)).plusDays(10);
+        conReputacion(3, EstadoReputacion.BLOQUEADO, hasta);
+
+        ReputacionPaciente r = servicio.sumarStrike(Usuario.builder().id(paciente).build());
+
+        assertThat(r.getCantidadStrikes()).isEqualTo((short) 3);
+        assertThat(r.getRestringidoHasta()).isEqualTo(hasta);
+        ArgumentCaptor<StrikeSumado> evento = ArgumentCaptor.forClass(StrikeSumado.class);
+        verify(eventos).publishEvent(evento.capture());
+        assertThat(evento.getValue().repetido()).isTrue();
+        assertThat(evento.getValue().restringidoHasta()).isEqualTo(hasta);
+    }
+
+    @Test
+    @DisplayName("Los días de suspensión del evento salen de DIAS_SUSPENSION_STRIKES")
+    void diasDeSuspensionDesdeLaConfiguracion() {
+        when(parametros.entero(eq(ReputacionService.DIAS_SUSPENSION), eq(30))).thenReturn(15);
+        conReputacion(2, EstadoReputacion.REGULAR, null);
 
         servicio.sumarStrike(Usuario.builder().id(paciente).build());
 
-        verify(eventos, never()).publishEvent(any(StrikeSumado.class));
+        ArgumentCaptor<StrikeSumado> evento = ArgumentCaptor.forClass(StrikeSumado.class);
+        verify(eventos).publishEvent(evento.capture());
+        assertThat(evento.getValue().diasSuspension()).isEqualTo(15);
+        assertThat(evento.getValue().repetido()).isFalse();
+        assertThat(evento.getValue().restringidoHasta())
+                .isEqualTo(OffsetDateTime.now(Clock.fixed(AHORA, ZoneOffset.UTC)).plusDays(15));
     }
 }
