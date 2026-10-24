@@ -132,7 +132,8 @@ public class AuthService {
     public AuthResponse emitirTokens(Usuario usuario, HttpServletRequest httpRequest) {
         String accessToken = jwtService.generateAccessToken(new UsuarioPrincipal(usuario));
         String refreshToken = tokenRefrescoService.crearParaUsuario(usuario, httpRequest);
-        return new AuthResponse(accessToken, refreshToken, usuario.getRol().name(), usuario.getNombreCompleto());
+        return new AuthResponse(accessToken, refreshToken, usuario.getRol().name(), usuario.getNombreCompleto(),
+                usuario.getEmailVerificadoEn() != null);
     }
 
     /** Crea el perfil y lo verifica en el COP; si el COP no responde, queda PENDIENTE y se reintenta solo (RF09). */
@@ -174,7 +175,8 @@ public class AuthService {
         String accessToken = jwtService.generateAccessToken(principal);
         String refreshToken = tokenRefrescoService.crearParaUsuario(principal.getUsuario(), httpRequest);
 
-        return new AuthResponse(accessToken, refreshToken, principal.getUsuario().getRol().name(), principal.getUsuario().getNombreCompleto());
+        return new AuthResponse(accessToken, refreshToken, principal.getUsuario().getRol().name(),
+                principal.getUsuario().getNombreCompleto(), principal.getUsuario().getEmailVerificadoEn() != null);
     }
 
     // @Transactional: el Usuario del token se carga de forma perezosa (LAZY). Sin una transacción
@@ -187,6 +189,7 @@ public class AuthService {
         UsuarioPrincipal principal = new UsuarioPrincipal(usuario);
         String nuevoAccessToken = jwtService.generateAccessToken(principal);
 
-        return new AuthResponse(nuevoAccessToken, resultado.refreshTokenPlano(), usuario.getRol().name(), usuario.getNombreCompleto());
+        return new AuthResponse(nuevoAccessToken, resultado.refreshTokenPlano(), usuario.getRol().name(),
+                usuario.getNombreCompleto(), usuario.getEmailVerificadoEn() != null);
     }
 }

@@ -31,6 +31,7 @@ public class CitasController {
     private final CitaService citaService;
     private final PagoService pagoService;
     private final ReprogramacionService reprogramacionService;
+    private final com.odontosystem.OdontoSystem.usuarios.VerificacionCorreoService verificacionCorreo;
 
     @Operation(summary = "Turnos libres de un odontólogo (sin login)",
             description = "Para un servicio y un día (YYYY-MM-DD, hasta 60 días adelante). Cada turno trae inicio y fin con zona horaria.")
@@ -44,11 +45,13 @@ public class CitasController {
 
     @Operation(summary = "Reservar una cita (paciente)",
             description = "Usa el inicio exacto de un turno de /disponibilidad. Queda PENDIENTE_PAGO: hay 15 minutos para pagar "
-                    + "el depósito (pagar_antes_de); si no, el turno se libera solo. 409 si el turno ya no está libre.")
+                    + "el depósito (pagar_antes_de); si no, el turno se libera solo. 409 si el turno ya no está libre. "
+                    + "403 si el paciente aún no verificó su correo (OTP).")
     @PostMapping("/api/citas")
     @ResponseStatus(HttpStatus.CREATED)
     public CitaResponse reservar(@AuthenticationPrincipal UsuarioPrincipal principal,
                                  @Valid @RequestBody ReservaRequest request) {
+        verificacionCorreo.exigirVerificado(principal.getUsuario().getId());
         return citaService.reservar(principal.getUsuario().getId(), request);
     }
 

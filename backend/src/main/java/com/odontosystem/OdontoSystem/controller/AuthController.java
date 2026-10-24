@@ -14,6 +14,7 @@ import com.odontosystem.OdontoSystem.service.AuthGoogleService;
 import com.odontosystem.OdontoSystem.service.AuthService;
 import com.odontosystem.OdontoSystem.service.RecuperacionPasswordService;
 import com.odontosystem.OdontoSystem.service.TokenRefrescoService;
+import com.odontosystem.OdontoSystem.usuarios.VerificacionCorreoService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,18 +31,26 @@ public class AuthController {
     private final TokenRefrescoService tokenRefrescoService;
     private final RecuperacionPasswordService recuperacion;
     private final AuthGoogleService authGoogle;
+    private final VerificacionCorreoService verificacionCorreo;
 
     public AuthController(AuthService authService, TokenRefrescoService tokenRefrescoService,
-                          RecuperacionPasswordService recuperacion, AuthGoogleService authGoogle) {
+                          RecuperacionPasswordService recuperacion, AuthGoogleService authGoogle,
+                          VerificacionCorreoService verificacionCorreo) {
         this.authService = authService;
         this.tokenRefrescoService = tokenRefrescoService;
         this.recuperacion = recuperacion;
         this.authGoogle = authGoogle;
+        this.verificacionCorreo = verificacionCorreo;
     }
 
+    @Operation(summary = "Registrarse con correo y contraseña",
+            description = "Crea la cuenta y entrega los tokens. Además envía un código de 6 dígitos al correo "
+                    + "(correo_verificado = false): el paciente debe verificarlo en POST /api/usuarios/yo/verificar-correo "
+                    + "antes de reservar.")
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> registrar(@Valid @RequestBody RegistroRequest request, HttpServletRequest httpRequest) {
         AuthResponse response = authService.registrar(request, httpRequest);
+        verificacionCorreo.enviarAlRegistrarse(request.correo());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

@@ -19,7 +19,8 @@ import java.util.UUID;
 public class UsuarioService {
 
     public record UsuarioResponse(UUID id, String nombreCompleto, String correo, String telefono,
-                                  String tipoDocumento, String numeroDocumento, RolUsuario rol, String fotoPerfilUrl) {}
+                                  String tipoDocumento, String numeroDocumento, RolUsuario rol, String fotoPerfilUrl,
+                                  boolean correoVerificado) {}
 
     /** Correo y documento no se cambian aquí: identifican la cuenta. */
     public record ActualizarUsuarioRequest(@Size(min = 3, max = 150) String nombreCompleto,
@@ -55,6 +56,7 @@ public class UsuarioService {
 
     static UsuarioResponse aRespuesta(Usuario u) {
         return new UsuarioResponse(u.getId(), u.getNombreCompleto(), u.getCorreo(), u.getTelefono(),
-                u.getTipoDocumento(), u.getNumeroDocumento(), u.getRol(), u.getFotoPerfilUrl());
+                u.getTipoDocumento(), u.getNumeroDocumento(), u.getRol(), u.getFotoPerfilUrl(),
+                u.getEmailVerificadoEn() != null);
     }
 }
