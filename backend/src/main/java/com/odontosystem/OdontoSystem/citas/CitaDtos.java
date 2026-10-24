@@ -28,6 +28,9 @@ public final class CitaDtos {
 
     public record CancelacionRequest(@Size(max = 500) String motivo) {}
 
+    /** El inicio exacto de un turno libre del mismo odontólogo y servicio (de /disponibilidad). */
+    public record ReprogramacionRequest(@NotNull OffsetDateTime inicio) {}
+
     public record OdontologoResumen(UUID id, String nombre, String consultorio, String direccion, String distrito) {}
 
     public record PacienteResumen(UUID id, String nombre, String telefono, String correo) {}
@@ -46,5 +49,7 @@ public final class CitaDtos {
                                PacienteResumen paciente,
                                ServicioResumen servicio,
                                String motivoCancelacion,
-                               OffsetDateTime creadoEn) {}
+                               OffsetDateTime creadoEn,
+                               /* Si nació de una reprogramación: la cita original (que quedó REPROGRAMADA). */
+                               UUID citaOrigenId) {}
 }

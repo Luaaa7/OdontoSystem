@@ -179,7 +179,7 @@ class ChatbotServiceTest {
                 new BigDecimal("150"), new BigDecimal("30"), null,
                 new CitaDtos.OdontologoResumen(anaId, odontologo, "Sonrisas Parcona", "Av. Principal 123", "Parcona"),
                 new CitaDtos.PacienteResumen(paciente.getId(), paciente.getNombreCompleto(), null, null),
-                new CitaDtos.ServicioResumen(resinaId, "Resina estética"), null, OffsetDateTime.now(RELOJ));
+                new CitaDtos.ServicioResumen(resinaId, "Resina estética"), null, OffsetDateTime.now(RELOJ), null);
     }
 
     // ------------------------------------------------------------------ sesiones

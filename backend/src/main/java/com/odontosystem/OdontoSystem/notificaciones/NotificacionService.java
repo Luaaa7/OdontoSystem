@@ -1,6 +1,7 @@
 package com.odontosystem.OdontoSystem.notificaciones;
 
 import com.odontosystem.OdontoSystem.citas.CitaCambioEstado;
+import com.odontosystem.OdontoSystem.citas.CitaReprogramada;
 import com.odontosystem.OdontoSystem.entity.CanalNotificacion;
 import com.odontosystem.OdontoSystem.entity.Cita;
 import com.odontosystem.OdontoSystem.entity.EstadoCita;
@@ -219,6 +220,46 @@ public class NotificacionService {
         }
     }
 
+    /**
+     * Lo llama {@link AvisosCitas} cuando el paciente reprogramó una cita: le confirma la nueva fecha a él y le
+     * avisa al odontólogo (si tiene correo). Los recordatorios de la cita nueva se programan solos.
+     */
+    public void avisarReprogramacion(CitaReprogramada evento) {
+        if (!enviador.activo()) {
+            return;
+        }
+        List<Correo> correos = transaccion.execute(estado -> citaRepository.conDetalle(evento.citaNuevaId()).map(cita -> {
+            List<Correo> lista = new ArrayList<>();
+            Map<String, Object> v = datosDeLaCita(cita);
+            var antes = evento.inicioAnterior().atZoneSameInstant(ZONA);
+            v.put("fechaAnterior", FECHA.format(antes));
+            v.put("horaAnterior", HORA.format(antes));
+            v.put("pendienteDelOdontologo", cita.getEstado() == EstadoCita.PENDIENTE_CONFIRMACION);
+            String cuando = v.get("fecha") + " a las " + v.get("hora");
+
+            Map<String, Object> alPaciente = new HashMap<>(v);
+            alPaciente.put("saludo", v.get("paciente"));
+            alPaciente.put("paraOdontologo", false);
+            lista.add(correoAlPaciente(cita, "Tu cita se reprogramó · " + cuando,
+                    plantillas.armar("cita-reprogramada", alPaciente), TipoNotificacion.AVISO_REPROGRAMACION));
+
+            var odontologo = cita.getOdontologo().getUsuario();
+            if (odontologo != null && odontologo.getCorreo() != null && !odontologo.getCorreo().isBlank()) {
+                Map<String, Object> alOdontologo = new HashMap<>(v);
+                alOdontologo.put("saludo", odontologo.getNombreCompleto());
+                alOdontologo.put("paraOdontologo", true);
+                alOdontologo.put("paciente", cita.getPaciente().getNombreCompleto());
+                lista.add(new Correo(odontologo.getId(), odontologo.getCorreo(), odontologo.getNombreCompleto(),
+                        "Cita reprogramada · " + cuando, plantillas.armar("cita-reprogramada", alOdontologo),
+                        TipoNotificacion.AVISO_REPROGRAMACION, null));
+            }
+            return lista;
+        }).orElseGet(List::of));
+        if (correos != null) {
+            correos.forEach(this::enviar);
+        }
+    }
+
     /** Lo llama {@link AvisosReputacion} cuando un paciente recibe un strike. */
     public void avisarStrike(StrikeSumado evento) {
         if (!enviador.activo() || evento.correo() == null || evento.correo().isBlank()) {
@@ -360,6 +401,7 @@ public class NotificacionService {
             String titulo = correo.tituloPush() != null ? correo.tituloPush() : switch (correo.tipo()) {
                 case RECORDATORIO_CITA -> "Recordatorio de tu cita";
                 case AVISO_CANCELACION -> "Cita cancelada";
+                case AVISO_REPROGRAMACION -> "Cita reprogramada";
                 case CONFIRMACION_PAGO -> "Tu cita en OdontoSystem";
                 default -> "OdontoSystem";
             };

@@ -301,6 +301,6 @@ public class CitaService {
                         o.getDireccionConsultorio(), o.getDistritoConsultorio()),
                 new PacienteResumen(p.getId(), p.getNombreCompleto(), p.getTelefono(), p.getCorreo()),
                 new ServicioResumen(c.getServicio().getId(), c.getServicio().getTitulo()),
-                c.getMotivoCancelacion(), c.getCreadoEn());
+                c.getMotivoCancelacion(), c.getCreadoEn(), c.getCitaOrigenId());
     }
 }

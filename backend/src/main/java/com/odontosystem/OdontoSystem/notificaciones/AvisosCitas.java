@@ -1,6 +1,7 @@
 package com.odontosystem.OdontoSystem.notificaciones;
 
 import com.odontosystem.OdontoSystem.citas.CitaCambioEstado;
+import com.odontosystem.OdontoSystem.citas.CitaReprogramada;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -30,6 +31,16 @@ public class AvisosCitas {
             notificaciones.avisarCambioDeEstado(evento);
         } catch (RuntimeException e) {
             log.warn("No se pudo avisar el cambio de la cita {} a {}: {}", evento.citaId(), evento.nuevo(), e.getMessage());
+        }
+    }
+
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void alReprogramar(CitaReprogramada evento) {
+        try {
+            notificaciones.avisarReprogramacion(evento);
+        } catch (RuntimeException e) {
+            log.warn("No se pudo avisar la reprogramación de la cita {}: {}", evento.citaOrigenId(), e.getMessage());
         }
     }
 }

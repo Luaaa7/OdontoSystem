@@ -14,6 +14,7 @@ import com.odontosystem.OdontoSystem.repository.CitaRepository;
 import com.odontosystem.OdontoSystem.repository.RecordatorioCitaRepository;
 import com.odontosystem.OdontoSystem.repository.RegistroNotificacionRepository;
 import com.odontosystem.OdontoSystem.usuarios.StrikeSumado;
+import com.odontosystem.OdontoSystem.citas.CitaReprogramada;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -403,6 +404,42 @@ class NotificacionServiceTest {
                 assertThat(html.getValue()).contains("No podrás reservar nuevas citas hasta").contains(fecha)
                                 .doesNotContain("Si llegas a");
                 verify(push).enviarAUsuario(eq(evento.pacienteId()), eq("Cuenta suspendida"), anyString(), any());
+        }
+
+        // ------------------------------------------------------------------ reprogramación
+
+        @Test
+        @DisplayName("Reprogramación: el paciente recibe la fecha anterior y la nueva; el odontólogo, su aviso")
+        void avisoDeReprogramacion() {
+                Cita nueva = cita(EstadoCita.CONFIRMADA, AHORA.plusDays(3));
+                nueva.getOdontologo().getUsuario().setCorreo("ana@consultorio.pe");
+                when(citas.conDetalle(nueva.getId())).thenReturn(Optional.of(nueva));
+
+                servicio.avisarReprogramacion(new CitaReprogramada(UUID.randomUUID(), nueva.getId(), AHORA.plusDays(2)));
+
+                ArgumentCaptor<String> asunto = ArgumentCaptor.forClass(String.class);
+                ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
+                verify(enviador).enviar(eq("lucia@correo.pe"), any(), asunto.capture(), html.capture());
+                assertThat(asunto.getValue()).startsWith("Tu cita se reprogramó · miércoles 14 de octubre");
+                assertThat(html.getValue()).contains("reprogramada").contains("martes 13 de octubre")
+                                .contains("miércoles 14 de octubre").contains("no tienes que volver a pagar");
+                ArgumentCaptor<String> htmlOdontologo = ArgumentCaptor.forClass(String.class);
+                verify(enviador).enviar(eq("ana@consultorio.pe"), any(), anyString(), htmlOdontologo.capture());
+                assertThat(htmlOdontologo.getValue()).contains("Lucía Ramos Peña").contains("reprogramó");
+                verify(push).enviarAUsuario(eq(nueva.getPaciente().getId()), eq("Cita reprogramada"), anyString(), any());
+        }
+
+        @Test
+        @DisplayName("Reprogramación pendiente de confirmar: al paciente le dice que el odontólogo debe confirmarla")
+        void avisoDeReprogramacionPendiente() {
+                Cita nueva = cita(EstadoCita.PENDIENTE_CONFIRMACION, AHORA.plusDays(3));
+                when(citas.conDetalle(nueva.getId())).thenReturn(Optional.of(nueva));
+
+                servicio.avisarReprogramacion(new CitaReprogramada(UUID.randomUUID(), nueva.getId(), AHORA.plusDays(2)));
+
+                ArgumentCaptor<String> html = ArgumentCaptor.forClass(String.class);
+                verify(enviador, times(1)).enviar(anyString(), any(), anyString(), html.capture());
+                assertThat(html.getValue()).contains("todavía tiene que confirmar");
         }
 
         @Test

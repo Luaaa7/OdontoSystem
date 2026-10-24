@@ -3,6 +3,7 @@ package com.odontosystem.OdontoSystem.citas;
 import com.odontosystem.OdontoSystem.citas.CitaDtos.CancelacionRequest;
 import com.odontosystem.OdontoSystem.citas.CitaDtos.CitaResponse;
 import com.odontosystem.OdontoSystem.citas.CitaDtos.DisponibilidadResponse;
+import com.odontosystem.OdontoSystem.citas.CitaDtos.ReprogramacionRequest;
 import com.odontosystem.OdontoSystem.citas.CitaDtos.ReservaRequest;
 import com.odontosystem.OdontoSystem.citas.PagoService.PagoRequest;
 import com.odontosystem.OdontoSystem.citas.PagoService.PagoResponse;
@@ -29,6 +30,7 @@ public class CitasController {
     private final DisponibilidadService disponibilidadService;
     private final CitaService citaService;
     private final PagoService pagoService;
+    private final ReprogramacionService reprogramacionService;
 
     @Operation(summary = "Turnos libres de un odontólogo (sin login)",
             description = "Para un servicio y un día (YYYY-MM-DD, hasta 60 días adelante). Cada turno trae inicio y fin con zona horaria.")
@@ -74,6 +76,19 @@ public class CitasController {
     @GetMapping("/api/citas/{citaId}")
     public CitaResponse detalle(@AuthenticationPrincipal UsuarioPrincipal principal, @PathVariable UUID citaId) {
         return citaService.detalle(principal.getUsuario().getId(), citaId);
+    }
+
+    @Operation(summary = "Reprogramar una cita (paciente)",
+            description = "Body: inicio (un turno libre de /disponibilidad, mismo odontólogo y servicio). Solo citas pagadas "
+                    + "(CONFIRMADA o PENDIENTE_CONFIRMACION), con 24 h o más de anticipación y una sola vez por cita "
+                    + "(HORAS_MINIMAS_REPROGRAMACION y MAX_REPROGRAMACIONES_POR_CITA). La original queda REPROGRAMADA y se "
+                    + "devuelve la cita nueva (201), con el depósito ya pagado y cita_origen_id. 409 si no se cumple una "
+                    + "regla o el horario ya no está libre.")
+    @PostMapping("/api/citas/{citaId}/reprogramar")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CitaResponse reprogramar(@AuthenticationPrincipal UsuarioPrincipal principal, @PathVariable UUID citaId,
+                                    @Valid @RequestBody ReprogramacionRequest request) {
+        return reprogramacionService.reprogramar(principal.getUsuario().getId(), citaId, request.inicio());
     }
 
     @Operation(summary = "Cancelar una cita (paciente u odontólogo)",
