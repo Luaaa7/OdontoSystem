@@ -2,7 +2,7 @@ package com.odontosystem.OdontoSystem.chatbot;
 
 import org.springframework.stereotype.Component;
 
-import java.text.Normalizer;
+import org.apache.commons.lang3.StringUtils;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -106,8 +106,7 @@ public class IntentDetector {
         if (texto == null) {
             return "";
         }
-        return Normalizer.normalize(texto, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")          // quita tildes y diéresis
+        return StringUtils.stripAccents(texto)    // quita tildes y diéresis (Apache Commons Lang)
                 .toLowerCase()
                 .replaceAll("[^a-z0-9ñ ]", " ")    // signos de puntuación -> espacio
                 .replaceAll("\\s+", " ")

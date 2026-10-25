@@ -6,6 +6,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -23,5 +26,17 @@ public class LiquidacionesController {
     @GetMapping("/api/odontologos/yo/liquidaciones")
     public MisIngresos mias(@AuthenticationPrincipal UsuarioPrincipal principal) {
         return liquidacionService.delOdontologo(principal.getUsuario().getId());
+    }
+
+    @Operation(summary = "Mis ingresos en Excel (.xlsx)",
+            description = "Lo mismo que GET /api/odontologos/yo/liquidaciones, como hoja de cálculo (Apache POI): "
+                    + "resumen y detalle de cada depósito, con filtros y montos en soles listos para sumar.")
+    @GetMapping("/api/odontologos/yo/liquidaciones/excel")
+    public ResponseEntity<byte[]> miasEnExcel(@AuthenticationPrincipal UsuarioPrincipal principal) {
+        byte[] excel = ExportadorExcel.exportar(liquidacionService.delOdontologo(principal.getUsuario().getId()));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(ExportadorExcel.TIPO))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"mis-ingresos-odontosystem.xlsx\"")
+                .body(excel);
     }
 }

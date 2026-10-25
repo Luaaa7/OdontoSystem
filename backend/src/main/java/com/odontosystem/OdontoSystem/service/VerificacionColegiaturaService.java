@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.text.Normalizer;
+import org.apache.commons.lang3.StringUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -272,9 +272,7 @@ public class VerificacionColegiaturaService {
     }
 
     private static Set<String> normalizarYTokenizar(String texto) {
-        String sinAcentos = Normalizer.normalize(texto, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .toUpperCase();
+        String sinAcentos = StringUtils.stripAccents(texto).toUpperCase();
         return Arrays.stream(sinAcentos.split("\\s+"))
                 .filter(t -> !t.isBlank())
                 .collect(Collectors.toCollection(HashSet::new));
