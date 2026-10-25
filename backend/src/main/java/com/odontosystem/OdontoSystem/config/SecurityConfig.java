@@ -72,7 +72,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/public/**", "/error").permitAll()
                         // Página pública para eliminar la cuenta sin la app (requisito de Google Play)
-                        .requestMatchers(HttpMethod.GET, "/eliminar-cuenta", "/eliminar-cuenta.html").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/eliminar-cuenta", "/eliminar-cuenta.html", "/privacidad").permitAll()
                         // Avisos de la pasarela: los manda Mercado Pago sin token; se verifican consultando la orden a Mercado Pago
                         .requestMatchers(HttpMethod.POST, "/api/pagos/webhook/**").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
