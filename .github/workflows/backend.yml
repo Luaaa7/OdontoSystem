@@ -21,10 +21,10 @@ jobs:
         working-directory: backend
     steps:
       - name: Descargar el codigo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Instalar Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -40,7 +40,7 @@ jobs:
 
       - name: Guardar el reporte de cobertura (JaCoCo)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: cobertura-jacoco
           path: backend/target/site/jacoco/
