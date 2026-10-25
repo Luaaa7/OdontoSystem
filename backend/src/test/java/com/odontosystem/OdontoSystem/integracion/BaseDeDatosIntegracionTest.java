@@ -3,7 +3,9 @@ package com.odontosystem.OdontoSystem.integracion;
 import com.odontosystem.OdontoSystem.entity.CanalNotificacion;
 import com.odontosystem.OdontoSystem.entity.OtpVerificacion;
 import com.odontosystem.OdontoSystem.repository.OtpVerificacionRepository;
+import com.odontosystem.OdontoSystem.usuarios.EliminacionCuentaService;
 import com.odontosystem.OdontoSystem.usuarios.VerificacionCorreoService;
+import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -113,6 +115,8 @@ class BaseDeDatosIntegracionTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private OtpVerificacionRepository otps;
     @Autowired private VerificacionCorreoService verificacionCorreo;
+    @Autowired private EliminacionCuentaService eliminacionCuenta;
+    @Autowired private UsuarioRepository usuarios;
 
     // ------------------------------------------------------------------ datos de prueba
 
@@ -246,6 +250,27 @@ class BaseDeDatosIntegracionTest {
         List<String> estados = jdbc.queryForList(
                 "SELECT estado_nuevo::text FROM bitacora_auditoria_citas WHERE cita_id = ? ORDER BY id", String.class, cita);
         assertThat(estados).containsExactly("PENDIENTE_PAGO", "CANCELADA_SIN_REEMBOLSO");
+    }
+
+    @Test
+    @DisplayName("Eliminar cuenta: la BD acepta la anonimización y conserva las citas y el consentimiento")
+    void eliminarCuentaEnLaBd() {
+        Consultorio c = consultorio();
+        UUID citaPasada = cita(c, DIA.minusDays(30), "COMPLETADA");
+        jdbc.update("INSERT INTO consentimientos_privacidad (usuario_id, version_politica) VALUES (?, 'it-v1')", c.paciente());
+        jdbc.update("INSERT INTO dispositivos_usuario (usuario_id, token_fcm) VALUES (?, 'token-de-prueba')", c.paciente());
+
+        eliminacionCuenta.anonimizar(usuarios.findById(c.paciente()).orElseThrow());
+
+        var fila = jdbc.queryForMap("SELECT nombre_completo, correo, esta_activo FROM usuarios WHERE id = ?", c.paciente());
+        assertThat(fila.get("nombre_completo")).isEqualTo("Usuario eliminado");
+        assertThat((String) fila.get("correo")).endsWith("@odontosystem.invalid");
+        assertThat(fila.get("esta_activo")).isEqualTo(false);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM dispositivos_usuario WHERE usuario_id = ?",
+                Integer.class, c.paciente())).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM citas WHERE id = ?", Integer.class, citaPasada)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM consentimientos_privacidad WHERE usuario_id = ?",
+                Integer.class, c.paciente())).isEqualTo(1);
     }
 
     @Test

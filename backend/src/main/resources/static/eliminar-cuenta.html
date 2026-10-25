@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eliminar mi cuenta · OdontoSystem</title>
+  <style>
+    :root { --verde: #0f766e; --texto: #1f2933; --gris: #52606d; --fondo: #f2f5f7; --rojo: #b42318; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--fondo); font-family: Arial, Helvetica, sans-serif; color: var(--texto); }
+    header { background: var(--verde); color: #fff; padding: 18px 16px; font-size: 20px; font-weight: bold; }
+    main { max-width: 640px; margin: 24px auto; padding: 0 16px; }
+    section { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    h1 { font-size: 22px; margin: 0 0 12px; }
+    h2 { font-size: 17px; margin: 0 0 10px; }
+    p, li { line-height: 1.55; }
+    label { display: block; font-weight: bold; margin: 12px 0 6px; }
+    input { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #cbd2d9; border-radius: 8px; }
+    button { margin-top: 14px; width: 100%; padding: 12px; font-size: 16px; border: 0; border-radius: 8px;
+             background: var(--verde); color: #fff; cursor: pointer; }
+    button.peligro { background: var(--rojo); }
+    button:disabled { opacity: .6; cursor: wait; }
+    .aviso { margin-top: 12px; padding: 12px; border-radius: 8px; display: none; }
+    .ok { background: #ecfdf3; color: #05603a; } .error { background: #fef3f2; color: var(--rojo); }
+    .oculto { display: none; }
+    small { color: var(--gris); }
+  </style>
+</head>
+<body>
+<header>OdontoSystem</header>
+<main>
+  <section>
+    <h1>Eliminar mi cuenta</h1>
+    <p>Desde la app: <strong>Mi cuenta → Eliminar mi cuenta</strong>. Si ya no tienes la app, puedes hacerlo aquí con un
+      código que te enviaremos a tu correo.</p>
+    <h2>Qué pasa al eliminarla</h2>
+    <ul>
+      <li>Se cancelan tus citas futuras (con la devolución del depósito que corresponda).</li>
+      <li>Se borran tus sesiones, dispositivos, conversaciones con el asistente y tus datos de contacto
+        (nombre, correo, teléfono, documento y foto).</li>
+      <li>Por obligación legal se conservan, sin tus datos de contacto, las historias clínicas, los pagos y las citas
+        realizadas. Ya no podrás entrar con esa cuenta.</li>
+    </ul>
+  </section>
+
+  <section id="paso1">
+    <h2>1. Tu correo</h2>
+    <label for="correo">Correo de tu cuenta</label>
+    <input id="correo" type="email" autocomplete="email" placeholder="tucorreo@ejemplo.com">
+    <button id="pedir">Enviarme el código</button>
+    <div id="aviso1" class="aviso"></div>
+  </section>
+
+  <section id="paso2" class="oculto">
+    <h2>2. Confirma con el código</h2>
+    <p><small>Si el correo tiene una cuenta, te llegó un código de 6 dígitos (vence en 15 minutos). Revisa también spam.</small></p>
+    <label for="codigo">Código</label>
+    <input id="codigo" inputmode="numeric" maxlength="6" placeholder="123456">
+    <button id="eliminar" class="peligro">Eliminar mi cuenta definitivamente</button>
+    <div id="aviso2" class="aviso"></div>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  function aviso(id, texto, ok) {
+    const el = $(id); el.textContent = texto; el.className = 'aviso ' + (ok ? 'ok' : 'error'); el.style.display = 'block';
+  }
+  async function enviar(url, cuerpo) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+    if (r.ok) return null;
+    try { const e = await r.json(); return e.mensaje || e.detail || 'No se pudo completar. Inténtalo de nuevo.'; }
+    catch (_) { return 'No se pudo completar. Inténtalo de nuevo.'; }
+  }
+  $('pedir').addEventListener('click', async () => {
+    const correo = $('correo').value.trim();
+    if (!correo.includes('@')) { aviso('aviso1', 'Escribe un correo válido.', false); return; }
+    $('pedir').disabled = true;
+    const error = await enviar('/api/public/cuenta/eliminacion/codigo', { correo });
+    $('pedir').disabled = false;
+    if (error) { aviso('aviso1', error, false); return; }
+    aviso('aviso1', 'Listo. Si existe una cuenta con ese correo, te enviamos un código.', true);
+    $('paso2').classList.remove('oculto');
+  });
+  $('eliminar').addEventListener('click', async () => {
+    const correo = $('correo').value.trim(), codigo = $('codigo').value.trim();
+    if (!/^\d{6}$/.test(codigo)) { aviso('aviso2', 'El código tiene 6 dígitos.', false); return; }
+    if (!confirm('¿Seguro? Esta acción no se puede deshacer.')) return;
+    $('eliminar').disabled = true;
+    const error = await enviar('/api/public/cuenta/eliminacion', { correo, codigo });
+    $('eliminar').disabled = false;
+    if (error) { aviso('aviso2', error, false); return; }
+    $('paso1').classList.add('oculto');
+    aviso('aviso2', 'Tu cuenta fue eliminada. Gracias por haber usado OdontoSystem.', true);
+    $('eliminar').classList.add('oculto');
+  });
+</script>
+</body>
+</html>
