@@ -13,7 +13,10 @@ public final class ArchivosResponses {
 
     public record FotoPerfilResponse(String fotoPerfilUrl) {}
 
-    /** url_temporal vence en url_expira_en: el frontend debe pedir la lista de nuevo para renovarla. */
+    /**
+     * url_temporal vence en url_expira_en: el frontend debe pedir la lista de nuevo para renovarla.
+     * Ambos llegan en null si el enlace no se pudo generar (el documento sigue figurando como subido).
+     */
     public record DocumentoResponse(UUID id,
                                     TipoDocumentoOdontologo tipo,
                                     OffsetDateTime subidoEn,
