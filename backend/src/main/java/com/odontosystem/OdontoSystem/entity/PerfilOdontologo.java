@@ -11,6 +11,8 @@ import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -93,6 +95,10 @@ public class PerfilOdontologo {
     @Column(name = "desactivado_en")
     private OffsetDateTime desactivadoEn;
 
+    /** Suspensión por faltas (3 ausencias confirmadas en 90 días): hasta esta fecha no recibe reservas. */
+    @Column(name = "suspendido_hasta")
+    private OffsetDateTime suspendidoHasta;
+
     @Column(name = "creado_en", nullable = false, updatable = false)
     private OffsetDateTime creadoEn;
 
@@ -111,10 +117,17 @@ public class PerfilOdontologo {
     @Column(name = "nota_observacion", columnDefinition = "TEXT")
     private String notaObservacion;
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "especialidades_odontologo",
+            joinColumns = @JoinColumn(name = "odontologo_id"),
+            inverseJoinColumns = @JoinColumn(name = "especialidad_id"))
+    @Builder.Default
+    private Set<Especialidad> especialidades = new HashSet<>();
+
     @PrePersist
     protected void alPersistir() {
         OffsetDateTime ahora = OffsetDateTime.now();
         if (creadoEn == null) creadoEn = ahora;
         if (actualizadoEn == null) actualizadoEn = ahora;
     }
-}
+}

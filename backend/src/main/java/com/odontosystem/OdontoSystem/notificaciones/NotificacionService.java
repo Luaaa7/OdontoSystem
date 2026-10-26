@@ -1,0 +1,421 @@
+package com.odontosystem.OdontoSystem.notificaciones;
+
+import com.odontosystem.OdontoSystem.citas.CitaCambioEstado;
+import com.odontosystem.OdontoSystem.citas.CitaReprogramada;
+import com.odontosystem.OdontoSystem.entity.CanalNotificacion;
+import com.odontosystem.OdontoSystem.entity.Cita;
+import com.odontosystem.OdontoSystem.entity.EstadoCita;
+import com.odontosystem.OdontoSystem.entity.EstadoNotificacion;
+import com.odontosystem.OdontoSystem.entity.RecordatorioCita;
+import com.odontosystem.OdontoSystem.entity.RegistroNotificacion;
+import com.odontosystem.OdontoSystem.entity.TipoNotificacion;
+import com.odontosystem.OdontoSystem.repository.CitaRepository;
+import com.odontosystem.OdontoSystem.repository.RecordatorioCitaRepository;
+import com.odontosystem.OdontoSystem.repository.RegistroNotificacionRepository;
+import com.odontosystem.OdontoSystem.usuarios.StrikeSumado;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.ArrayList;
+
+/**
+ * RF10: recordatorios de cita y avisos por correo.
+ *
+ * <b>Recordatorios.</b> Cada cita CONFIRMADA recibe dos: 24 horas y 2 horas
+ * antes (solo los que todavía
+ * están en el futuro). Una tarea los crea en recordatorios_cita y otra manda
+ * los que ya vencieron. Antes de
+ * enviar, cada recordatorio se "reclama" con un UPDATE condicional: si hay dos
+ * instancias del backend
+ * (tu computadora y Railway), solo una lo envía. Si la cita se canceló, el
+ * recordatorio se borra sin enviar.
+ *
+ * <b>Avisos inmediatos.</b> Cuando una cita queda confirmada, pagada a la
+ * espera del odontólogo o cancelada,
+ * el paciente recibe un correo. Cada envío queda en registro_notificaciones.
+ */
+@Service
+public class NotificacionService {
+
+    private static final Logger log = LoggerFactory.getLogger(NotificacionService.class);
+
+    static final List<Duration> ANTICIPACIONES = List.of(Duration.ofHours(24), Duration.ofHours(2));
+    /**
+     * Las citas se revisan con 2 días de anticipación: suficiente para el
+     * recordatorio de 24 h.
+     */
+    static final Duration VENTANA = Duration.ofDays(2);
+    static final int LOTE = 50;
+
+    private static final ZoneId ZONA = ZoneId.of("America/Lima");
+    private static final Locale ES = Locale.of("es", "PE");
+    private static final DateTimeFormatter FECHA = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", ES);
+    private static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm");
+
+    private final RecordatorioCitaRepository recordatorioRepository;
+    private final RegistroNotificacionRepository registroRepository;
+    private final CitaRepository citaRepository;
+    private final EnviadorCorreo enviador;
+    private final PlantillasCorreo plantillas;
+    private final Clock clock;
+    private final TransactionTemplate transaccion;
+    private final PushService push;
+
+    public NotificacionService(RecordatorioCitaRepository recordatorioRepository,
+            RegistroNotificacionRepository registroRepository,
+            CitaRepository citaRepository, EnviadorCorreo enviador, PlantillasCorreo plantillas,
+            Clock clock, PlatformTransactionManager transactionManager, PushService push) {
+        this.recordatorioRepository = recordatorioRepository;
+        this.registroRepository = registroRepository;
+        this.citaRepository = citaRepository;
+        this.enviador = enviador;
+        this.plantillas = plantillas;
+        this.clock = clock;
+        this.transaccion = new TransactionTemplate(transactionManager);
+        this.push = push;
+    }
+
+    /** Un correo listo para salir. */
+    /**
+     * tituloPush: opcional; si es null, el push usa el título según el tipo de
+     * aviso.
+     */
+    record Correo(UUID usuarioId, String para, String nombre, String asunto, String html, TipoNotificacion tipo,
+            String tituloPush) {
+    }
+
+    // ==================================================================
+    // Recordatorios
+    // ==================================================================
+
+    /**
+     * Crea los recordatorios de las citas confirmadas de los próximos 2 días que
+     * aún no los tienen.
+     */
+    public int programarRecordatorios() {
+        Integer creados = transaccion.execute(estado -> {
+            OffsetDateTime ahora = OffsetDateTime.now(clock);
+            int total = 0;
+            for (Cita cita : citaRepository.sinRecordatorios(EstadoCita.CONFIRMADA, ahora, ahora.plus(VENTANA))) {
+                for (Duration anticipacion : ANTICIPACIONES) {
+                    OffsetDateTime cuando = cita.getInicioProgramado().minus(anticipacion);
+                    if (cuando.isAfter(ahora)) {
+                        recordatorioRepository.save(RecordatorioCita.builder()
+                                .cita(cita).canal(CanalNotificacion.EMAIL).programadoPara(cuando).build());
+                        total++;
+                    }
+                }
+            }
+            return total;
+        });
+        return creados == null ? 0 : creados;
+    }
+
+    /**
+     * Manda los recordatorios cuya hora ya llegó. Sin proveedor de correo no hace
+     * nada (quedan pendientes).
+     */
+    public int enviarPendientes() {
+        if (!enviador.activo()) {
+            return 0;
+        }
+        OffsetDateTime ahora = OffsetDateTime.now(clock);
+        List<UUID> ids = transaccion.execute(estado -> recordatorioRepository.vencidos(EstadoNotificacion.PENDIENTE,
+                ahora, PageRequest.of(0, LOTE)));
+        int enviados = 0;
+        for (UUID id : ids == null ? List.<UUID>of() : ids) {
+            if (procesarRecordatorio(id, ahora)) {
+                enviados++;
+            }
+        }
+        return enviados;
+    }
+
+    private boolean procesarRecordatorio(UUID id, OffsetDateTime ahora) {
+        // 1) En una transacción corta: revisar la cita, reclamar el recordatorio y
+        // armar el correo
+        Optional<Correo> correo = transaccion.execute(estado -> {
+            Optional<RecordatorioCita> encontrado = recordatorioRepository.conDetalle(id);
+            if (encontrado.isEmpty()) {
+                return Optional.<Correo>empty();
+            }
+            RecordatorioCita recordatorio = encontrado.get();
+            Cita cita = recordatorio.getCita();
+            if (cita.getEstado() != EstadoCita.CONFIRMADA) {
+                recordatorioRepository.delete(recordatorio); // se canceló o reprogramó: ya no aplica
+                return Optional.<Correo>empty();
+            }
+            if (!cita.getInicioProgramado().isAfter(ahora)) {
+                // el backend estuvo apagado y la cita ya empezó: avisar ahora no sirve
+                recordatorioRepository.cambiarEstadoSi(id, EstadoNotificacion.PENDIENTE, EstadoNotificacion.FALLIDA,
+                        null);
+                return Optional.<Correo>empty();
+            }
+            if (recordatorioRepository.cambiarEstadoSi(id, EstadoNotificacion.PENDIENTE, EstadoNotificacion.ENVIADA,
+                    ahora) == 0) {
+                return Optional.<Correo>empty(); // otra instancia ya lo tomó
+            }
+            return Optional.of(recordatorio(cita, ahora));
+        });
+        if (correo == null || correo.isEmpty()) {
+            return false;
+        }
+        // 2) Fuera de la transacción: enviar (puede tardar unos segundos)
+        boolean ok = enviar(correo.get());
+        if (!ok) {
+            transaccion.executeWithoutResult(estado -> recordatorioRepository.cambiarEstadoSi(
+                    id, EstadoNotificacion.ENVIADA, EstadoNotificacion.FALLIDA, null));
+        }
+        return ok;
+    }
+
+    private Correo recordatorio(Cita cita, OffsetDateTime ahora) {
+        Map<String, Object> v = datosDeLaCita(cita);
+        long horas = Duration.between(ahora, cita.getInicioProgramado()).toHours();
+        boolean esHoy = cita.getInicioProgramado().atZoneSameInstant(ZONA).toLocalDate()
+                .equals(ahora.atZoneSameInstant(ZONA).toLocalDate());
+        v.put("cuando", esHoy ? "hoy" : "mañana");
+        v.put("enPocasHoras", horas < 6);
+        String asunto = "Recordatorio: tu cita " + (esHoy ? "de hoy" : "de mañana") + " a las " + v.get("hora");
+        return correoAlPaciente(cita, asunto, plantillas.armar("recordatorio", v), TipoNotificacion.RECORDATORIO_CITA);
+    }
+
+    // ==================================================================
+    // Avisos inmediatos (al cambiar el estado de una cita)
+    // ==================================================================
+
+    /**
+     * Lo llama {@link AvisosCitas} después de que se guardó el cambio de estado.
+     */
+    public void avisarCambioDeEstado(CitaCambioEstado evento) {
+        if (!enviador.activo()) {
+            return;
+        }
+        List<Correo> correos = transaccion.execute(estado -> citaRepository.conDetalle(evento.citaId()).map(cita -> {
+            List<Correo> lista = new ArrayList<>();
+            avisoPara(cita, evento).ifPresent(lista::add);
+            avisoAlOdontologo(cita, evento).ifPresent(lista::add);
+            return lista;
+        }).orElseGet(List::of));
+        if (correos != null) {
+            correos.forEach(this::enviar);
+        }
+    }
+
+    /**
+     * Lo llama {@link AvisosCitas} cuando el paciente reprogramó una cita: le confirma la nueva fecha a él y le
+     * avisa al odontólogo (si tiene correo). Los recordatorios de la cita nueva se programan solos.
+     */
+    public void avisarReprogramacion(CitaReprogramada evento) {
+        if (!enviador.activo()) {
+            return;
+        }
+        List<Correo> correos = transaccion.execute(estado -> citaRepository.conDetalle(evento.citaNuevaId()).map(cita -> {
+            List<Correo> lista = new ArrayList<>();
+            Map<String, Object> v = datosDeLaCita(cita);
+            var antes = evento.inicioAnterior().atZoneSameInstant(ZONA);
+            v.put("fechaAnterior", FECHA.format(antes));
+            v.put("horaAnterior", HORA.format(antes));
+            v.put("pendienteDelOdontologo", cita.getEstado() == EstadoCita.PENDIENTE_CONFIRMACION);
+            String cuando = v.get("fecha") + " a las " + v.get("hora");
+
+            Map<String, Object> alPaciente = new HashMap<>(v);
+            alPaciente.put("saludo", v.get("paciente"));
+            alPaciente.put("paraOdontologo", false);
+            lista.add(correoAlPaciente(cita, "Tu cita se reprogramó · " + cuando,
+                    plantillas.armar("cita-reprogramada", alPaciente), TipoNotificacion.AVISO_REPROGRAMACION));
+
+            var odontologo = cita.getOdontologo().getUsuario();
+            if (odontologo != null && odontologo.getCorreo() != null && !odontologo.getCorreo().isBlank()) {
+                Map<String, Object> alOdontologo = new HashMap<>(v);
+                alOdontologo.put("saludo", odontologo.getNombreCompleto());
+                alOdontologo.put("paraOdontologo", true);
+                alOdontologo.put("paciente", cita.getPaciente().getNombreCompleto());
+                lista.add(new Correo(odontologo.getId(), odontologo.getCorreo(), odontologo.getNombreCompleto(),
+                        "Cita reprogramada · " + cuando, plantillas.armar("cita-reprogramada", alOdontologo),
+                        TipoNotificacion.AVISO_REPROGRAMACION, null));
+            }
+            return lista;
+        }).orElseGet(List::of));
+        if (correos != null) {
+            correos.forEach(this::enviar);
+        }
+    }
+
+    /** Lo llama {@link AvisosReputacion} cuando un paciente recibe un strike. */
+    public void avisarStrike(StrikeSumado evento) {
+        if (!enviador.activo() || evento.correo() == null || evento.correo().isBlank()) {
+            return;
+        }
+        boolean suspendido = evento.restringidoHasta() != null && evento.strikes() >= evento.limite();
+        boolean repetido = suspendido && evento.repetido();
+        Map<String, Object> v = new HashMap<>();
+        v.put("nombre", primerNombre(evento.nombre()));
+        v.put("strikes", evento.strikes());
+        v.put("limite", evento.limite());
+        v.put("suspendido", suspendido);
+        v.put("repetido", repetido);
+        v.put("dias", evento.diasSuspension());
+        if (suspendido) {
+            v.put("hasta", FECHA.format(evento.restringidoHasta().atZoneSameInstant(ZONA)));
+        }
+        String asunto = repetido
+                ? "Registramos otra inasistencia: tu suspensión sigue vigente"
+                : suspendido
+                ? "Tu cuenta quedó suspendida por strikes"
+                : "Registramos un strike en tu cuenta (" + evento.strikes() + " de " + evento.limite() + ")";
+        enviar(new Correo(evento.pacienteId(), evento.correo(), evento.nombre(), asunto,
+                plantillas.armar("alerta-strike", v), TipoNotificacion.ALERTA_STRIKE,
+                repetido ? "Suspensión vigente" : suspendido ? "Cuenta suspendida" : "Strike en tu cuenta"));
+    }
+
+    private Optional<Correo> avisoPara(Cita cita, CitaCambioEstado evento) {
+        Map<String, Object> v = datosDeLaCita(cita);
+        return switch (evento.nuevo()) {
+            case CONFIRMADA -> {
+                v.put("pendienteDelOdontologo", false);
+                yield Optional.of(correoAlPaciente(cita,
+                        "Tu cita está confirmada · " + v.get("fecha") + " a las " + v.get("hora"),
+                        plantillas.armar("cita-confirmada", v), TipoNotificacion.CONFIRMACION_PAGO));
+            }
+            case PENDIENTE_CONFIRMACION -> {
+                v.put("pendienteDelOdontologo", true);
+                yield Optional.of(correoAlPaciente(cita, "Recibimos tu pago · falta la confirmación del odontólogo",
+                        plantillas.armar("cita-confirmada", v), TipoNotificacion.CONFIRMACION_PAGO));
+            }
+            case CANCELADA_CON_REEMBOLSO, CANCELADA_SIN_REEMBOLSO -> {
+                v.put("conReembolso", evento.nuevo() == EstadoCita.CANCELADA_CON_REEMBOLSO);
+                v.put("eraPendienteDePago", evento.anterior() == EstadoCita.PENDIENTE_PAGO);
+                v.put("motivo", cita.getMotivoCancelacion());
+                yield Optional.of(correoAlPaciente(cita, "Tu cita del " + v.get("fecha") + " fue cancelada",
+                        plantillas.armar("cita-cancelada", v), TipoNotificacion.AVISO_CANCELACION));
+            }
+            default -> Optional.empty();
+        };
+    }
+
+    /**
+     * Al odontólogo le avisamos solo cuando el paciente acaba de pagar
+     * (PENDIENTE_PAGO → CONFIRMADA o
+     * PENDIENTE_CONFIRMACION). Así no se duplica el aviso cuando él mismo confirma
+     * la cita.
+     */
+    private Optional<Correo> avisoAlOdontologo(Cita cita, CitaCambioEstado evento) {
+        boolean recienPagada = evento.anterior() == EstadoCita.PENDIENTE_PAGO
+                && (evento.nuevo() == EstadoCita.CONFIRMADA || evento.nuevo() == EstadoCita.PENDIENTE_CONFIRMACION);
+        var usuario = cita.getOdontologo().getUsuario();
+        if (!recienPagada || usuario == null || usuario.getCorreo() == null || usuario.getCorreo().isBlank()) {
+            return Optional.empty();
+        }
+        boolean porConfirmar = evento.nuevo() == EstadoCita.PENDIENTE_CONFIRMACION;
+        Map<String, Object> v = datosDeLaCita(cita);
+        v.put("nombreOdontologo", usuario.getNombreCompleto());
+        v.put("pendienteDelOdontologo", porConfirmar);
+        String asunto = (porConfirmar ? "Nueva cita por confirmar · " : "Nueva cita · ")
+                + v.get("fecha") + " a las " + v.get("hora");
+        // Se reutiliza CONFIRMACION_PAGO (el depósito ya está pagado); el push lleva su
+        // propio título.
+        return Optional.of(new Correo(usuario.getId(), usuario.getCorreo(), usuario.getNombreCompleto(), asunto,
+                plantillas.armar("cita-nueva-odontologo", v), TipoNotificacion.CONFIRMACION_PAGO,
+                porConfirmar ? "Nueva cita por confirmar" : "Nueva cita reservada"));
+    }
+
+    // ==================================================================
+    // Apoyo
+    // ==================================================================
+
+    private static Map<String, Object> datosDeLaCita(Cita cita) {
+        Map<String, Object> v = new HashMap<>();
+        var inicio = cita.getInicioProgramado().atZoneSameInstant(ZONA);
+        var odontologo = cita.getOdontologo();
+        v.put("paciente", primerNombre(cita.getPaciente().getNombreCompleto()));
+        v.put("odontologo", odontologo.getUsuario().getNombreCompleto());
+        v.put("consultorio", odontologo.getNombreConsultorio());
+        v.put("direccion", odontologo.getDireccionConsultorio());
+        v.put("distrito", odontologo.getDistritoConsultorio());
+        v.put("servicio", cita.getServicio().getTitulo());
+        v.put("fecha", FECHA.format(inicio));
+        v.put("hora", HORA.format(inicio));
+        v.put("precio", soles(cita.getPrecioServicio()));
+        v.put("deposito", soles(cita.getMontoDepositoRequerido()));
+        return v;
+    }
+
+    private static Correo correoAlPaciente(Cita cita, String asunto, String html, TipoNotificacion tipo) {
+        var paciente = cita.getPaciente();
+        return new Correo(paciente.getId(), paciente.getCorreo(), paciente.getNombreCompleto(), asunto, html, tipo,
+                null);
+    }
+
+    /**
+     * Envía y deja el rastro en registro_notificaciones. Nunca lanza: un correo
+     * caído no rompe nada más.
+     */
+    private boolean enviar(Correo correo) {
+        boolean ok;
+        try {
+            enviador.enviar(correo.para(), correo.nombre(), correo.asunto(), correo.html());
+            ok = true;
+        } catch (RuntimeException e) {
+            log.warn("No se pudo enviar el correo \"{}\" a {}: {}", correo.asunto(), correo.para(), e.getMessage());
+            ok = false;
+        }
+        boolean enviado = ok;
+        try {
+            transaccion.executeWithoutResult(estado -> registroRepository.save(RegistroNotificacion.builder()
+                    .usuarioId(correo.usuarioId()).tipo(correo.tipo()).canal(CanalNotificacion.EMAIL)
+                    .estado(enviado ? EstadoNotificacion.ENVIADA : EstadoNotificacion.FALLIDA)
+                    .enviadoEn(enviado ? OffsetDateTime.now(clock) : null)
+                    .build()));
+        } catch (RuntimeException e) {
+            log.warn("No se pudo registrar la notificación: {}", e.getMessage());
+        }
+        avisarPorPush(correo);
+        return ok;
+    }
+
+    /**
+     * La misma noticia como push en los celulares del usuario (si Firebase está
+     * configurado). Nunca lanza.
+     */
+    private void avisarPorPush(Correo correo) {
+        try {
+            String titulo = correo.tituloPush() != null ? correo.tituloPush() : switch (correo.tipo()) {
+                case RECORDATORIO_CITA -> "Recordatorio de tu cita";
+                case AVISO_CANCELACION -> "Cita cancelada";
+                case AVISO_REPROGRAMACION -> "Cita reprogramada";
+                case CONFIRMACION_PAGO -> "Tu cita en OdontoSystem";
+                default -> "OdontoSystem";
+            };
+            push.enviarAUsuario(correo.usuarioId(), titulo, correo.asunto(), Map.of("tipo", correo.tipo().name()));
+        } catch (RuntimeException e) {
+            log.warn("No se pudo enviar la push: {}", e.getMessage());
+        }
+    }
+
+    private static String primerNombre(String nombreCompleto) {
+        return nombreCompleto == null || nombreCompleto.isBlank() ? "" : nombreCompleto.trim().split("\\s+")[0];
+    }
+
+    private static String soles(BigDecimal monto) {
+        return monto == null ? null : "S/ " + monto.setScale(2, RoundingMode.HALF_UP).toPlainString();
+    }
+}

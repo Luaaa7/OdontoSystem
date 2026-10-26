@@ -8,4 +8,7 @@ import java.util.UUID;
 
 public interface HorarioAtencionRepository extends JpaRepository<HorarioAtencion, UUID> {
     List<HorarioAtencion> findByOdontologo_UsuarioIdOrderByDiaSemanaAscHoraInicioAsc(UUID odontologoId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    void deleteByOdontologo_UsuarioId(UUID odontologoId);
 }

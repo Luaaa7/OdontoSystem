@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head><meta charset="UTF-8"><title>Eliminar tu cuenta</title></head>
+<body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f7;padding:24px 12px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr><td style="background:#0f766e;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:bold;">OdontoSystem · Eliminar tu cuenta</td></tr>
+      <tr><td style="padding:24px;">
+        <p style="font-size:18px;margin:0 0 12px;">Hola <span th:text="${nombre}">Lucía</span>,</p>
+        <p style="margin:0 0 16px;line-height:1.5;">Pediste eliminar tu cuenta. Para confirmarlo, usa este código:</p>
+        <p style="margin:0 0 16px;text-align:center;">
+          <span th:text="${codigo}" style="display:inline-block;font-size:32px;letter-spacing:8px;font-weight:bold;background:#fef3f2;color:#b42318;padding:12px 20px;border-radius:8px;">123456</span>
+        </p>
+        <p style="margin:0 0 16px;line-height:1.5;">Vence en <strong th:text="${minutos}">15</strong> minutos. Eliminar la cuenta no se puede deshacer.</p>
+        <p style="margin:0;line-height:1.5;color:#52606d;">Si no fuiste tú, ignora este correo: tu cuenta no cambia.</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;color:#7b8794;font-size:12px;">
+        Este es un mensaje automático de OdontoSystem (Ica). No respondas a este correo.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

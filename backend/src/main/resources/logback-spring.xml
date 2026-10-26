@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Configuración de Logback (motor de logs por defecto de Spring Boot, vía SLF4J).
+  - Siempre: consola con hora de Lima (Railway muestra la consola en su panel de logs).
+  - Perfil "local" (./mvnw spring-boot:run -Dspring-boot.run.profiles=local): además guarda
+    logs/odontosystem.log, rota el archivo por día o al llegar a 10 MB, comprime los viejos (.gz),
+    conserva 30 días y limita el total a 200 MB.
+  - Seguridad: el código nunca escribe tokens, contraseñas ni claves; las trazas de error se recortan
+    a 40 líneas para no llenar el log con clases internas de librerías.
+-->
+<configuration>
+
+    <springProperty scope="context" name="NIVEL_APP" source="app.log.nivel" defaultValue="INFO"/>
+
+    <property name="PATRON"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS, America/Lima} %-5level [%thread] %logger{36} - %msg%n%ex{40}"/>
+
+    <appender name="CONSOLA" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${PATRON}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <springProfile name="local">
+        <appender name="ARCHIVO" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>logs/odontosystem.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>logs/odontosystem-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+                <maxFileSize>10MB</maxFileSize>
+                <maxHistory>30</maxHistory>
+                <totalSizeCap>200MB</totalSizeCap>
+            </rollingPolicy>
+            <encoder>
+                <pattern>${PATRON}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <!-- Código propio: nivel configurable con la variable APP_LOG_NIVEL (por defecto INFO). -->
+    <logger name="com.odontosystem" level="${NIVEL_APP}"/>
+    <!-- Librerías muy verbosas: solo advertencias. -->
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+    <logger name="org.flywaydb" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLA"/>
+        <springProfile name="local">
+            <appender-ref ref="ARCHIVO"/>
+        </springProfile>
+    </root>
+</configuration>

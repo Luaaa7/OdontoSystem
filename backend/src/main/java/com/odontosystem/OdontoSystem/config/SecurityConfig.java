@@ -1,9 +1,12 @@
 package com.odontosystem.OdontoSystem.config;
 
 import com.odontosystem.OdontoSystem.security.JwtAuthenticationFilter;
+import com.odontosystem.OdontoSystem.security.RespuestasSeguridad;
 import com.odontosystem.OdontoSystem.security.UsuarioDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -24,10 +27,13 @@ public class SecurityConfig {
 
     private final UsuarioDetailsService usuarioDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RespuestasSeguridad respuestasSeguridad;
 
-    public SecurityConfig(UsuarioDetailsService usuarioDetailsService, JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(UsuarioDetailsService usuarioDetailsService, JwtAuthenticationFilter jwtAuthenticationFilter,
+                          RespuestasSeguridad respuestasSeguridad) {
         this.usuarioDetailsService = usuarioDetailsService;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.respuestasSeguridad = respuestasSeguridad;
     }
 
     @Bean
@@ -59,14 +65,44 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                // 4. Permite el acceso a las rutas de autenticación, públicas, y al manejo de errores
+                // 4. CORS: deja que los frontends (web/app) llamen a la API desde el navegador.
+                //    Los orígenes permitidos se configuran en CorsConfig (propiedad app.cors.allowed-origins).
+                .cors(Customizer.withDefaults())
+                // 5. Permite el acceso a las rutas de autenticación, públicas, Swagger y al manejo de errores
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/public/**", "/error").permitAll()
+                        // Página pública para eliminar la cuenta sin la app (requisito de Google Play)
+                        .requestMatchers(HttpMethod.GET, "/eliminar-cuenta", "/eliminar-cuenta.html", "/privacidad").permitAll()
+                        // Avisos de la pasarela: los manda Mercado Pago sin token; se verifican consultando la orden a Mercado Pago
+                        .requestMatchers(HttpMethod.POST, "/api/pagos/webhook/**").permitAll()
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        // Documentos y fotos del consultorio: solo odontólogos
+                        .requestMatchers("/api/odontologos/yo/**").hasRole("ODONTOLOGO")
+                        // Buscador, perfil público y catálogos: sin login (el paciente explora antes de registrarse)
+                        .requestMatchers(HttpMethod.GET, "/api/odontologos", "/api/odontologos/*",
+                                "/api/odontologos/*/disponibilidad", "/api/odontologos/*/resenas", "/api/catalogos/**").permitAll()
+                        // Solo un paciente reserva
+                        .requestMatchers(HttpMethod.POST, "/api/citas", "/api/citas/*/pagar", "/api/citas/*/resena",
+                                "/api/citas/*/apelacion", "/api/citas/*/asistencia", "/api/citas/*/reprogramar").hasRole("PACIENTE")
+                        // Reseñas: solo el paciente califica y ve sus citas por calificar
+                        .requestMatchers(HttpMethod.PATCH, "/api/citas/*/resena").hasRole("PACIENTE")
+                        .requestMatchers(HttpMethod.GET, "/api/citas/por-resenar").hasRole("PACIENTE")
+                        // Historia clínica: la escribe el odontólogo de la cita; el paciente ve todo su historial
+                        .requestMatchers(HttpMethod.POST, "/api/citas/*/historia").hasRole("ODONTOLOGO")
+                        .requestMatchers(HttpMethod.GET, "/api/historias/mias").hasRole("PACIENTE")
+                        .requestMatchers(HttpMethod.GET, "/api/usuarios/yo/reputacion").hasRole("PACIENTE")
+                        // Railway consulta este endpoint para saber si la app está viva
+                        .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()
                 )
-                // 5. Inserta el filtro JWT antes del filtro estándar de autenticación por formulario
+                // 401 sin token o con token vencido; 403 si el rol no alcanza (ambos en JSON)
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint(respuestasSeguridad)
+                        .accessDeniedHandler(respuestasSeguridad)
+                )
+                // 6. Inserta el filtro JWT antes del filtro estándar de autenticación por formulario
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
-}
+}

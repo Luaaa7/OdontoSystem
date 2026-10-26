@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head><meta charset="UTF-8"><title>Aviso de strike</title></head>
+<body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f7;padding:24px 12px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr><td style="background:#0f766e;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:bold;">OdontoSystem</td></tr>
+      <tr><td style="padding:24px;">
+        <p style="font-size:18px;margin:0 0 12px;">Hola <span th:text="${nombre}">Lucía</span>,</p>
+
+        <p th:unless="${suspendido}" style="margin:0 0 16px;line-height:1.5;">
+          Registramos un <strong>strike</strong> en tu cuenta por una inasistencia o una cancelación
+          de último momento.
+        </p>
+        <p th:if="${suspendido and !repetido}" style="margin:0 0 16px;line-height:1.5;">
+          Registramos un <strong>strike</strong> en tu cuenta por una inasistencia o una cancelación
+          de último momento, y con este llegaste al límite.
+        </p>
+        <p th:if="${repetido}" style="margin:0 0 16px;line-height:1.5;">
+          Registramos <strong>otra inasistencia</strong> o cancelación de último momento en tu cuenta.
+          Tu cuenta ya estaba suspendida: la suspensión no se alarga, pero la falta queda en tu historial.
+        </p>
+
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               th:style="${suspendido} ? 'background:#fef2f2;border-radius:8px;' : 'background:#fffbeb;border-radius:8px;'">
+          <tr><td style="padding:16px;line-height:1.7;">
+            <div>⚠️ Strikes acumulados: <strong><span th:text="${strikes}">1</span> de <span th:text="${limite}">3</span></strong></div>
+            <div th:if="${suspendido}">⛔ No podrás reservar nuevas citas hasta el <strong th:text="${hasta}">22 de noviembre</strong>.</div>
+            <div th:unless="${suspendido}">Si llegas a <span th:text="${limite}">3</span> strikes, tu cuenta quedará suspendida por <span th:text="${dias}">30</span> días y no podrás reservar citas.</div>
+          </td></tr>
+        </table>
+
+        <p style="margin:16px 0 0;line-height:1.5;">
+          Si crees que se trata de un error, puedes presentar una apelación desde la app.
+        </p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;color:#7b8794;font-size:12px;">
+        Este es un mensaje automático de OdontoSystem (Ica). No respondas a este correo.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

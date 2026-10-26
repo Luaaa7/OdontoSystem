@@ -7,12 +7,15 @@ import com.odontosystem.OdontoSystem.entity.*;
 import com.odontosystem.OdontoSystem.repository.PerfilOdontologoRepository;
 import com.odontosystem.OdontoSystem.repository.ReputacionPacienteRepository;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
-import com.odontosystem.OdontoSystem.repository.VerificacionCopRepository;
 import com.odontosystem.OdontoSystem.security.JwtService;
+import com.odontosystem.OdontoSystem.security.LimiteLoginService;
+import com.odontosystem.OdontoSystem.security.LoginBloqueadoException;
 import com.odontosystem.OdontoSystem.security.UsuarioPrincipal;
+import com.odontosystem.OdontoSystem.usuarios.ConsentimientoService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,11 +23,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.text.Normalizer;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class AuthService {
@@ -36,8 +34,9 @@ public class AuthService {
     private final TokenRefrescoService tokenRefrescoService;
     private final PerfilOdontologoRepository perfilOdontologoRepository;
     private final ReputacionPacienteRepository reputacionPacienteRepository;
-    private final VerificacionCopRepository verificacionCopRepository;
-    private final ColegioOdontologicoVerificacionService verificacionCopService;
+    private final VerificacionColegiaturaService verificacionColegiatura;
+    private final LimiteLoginService limiteLogin;
+    private final ConsentimientoService consentimientos;
 
     public AuthService(
             UsuarioRepository usuarioRepository,
@@ -47,8 +46,9 @@ public class AuthService {
             TokenRefrescoService tokenRefrescoService,
             PerfilOdontologoRepository perfilOdontologoRepository,
             ReputacionPacienteRepository reputacionPacienteRepository,
-            VerificacionCopRepository verificacionCopRepository,
-            ColegioOdontologicoVerificacionService verificacionCopService
+            VerificacionColegiaturaService verificacionColegiatura,
+            LimiteLoginService limiteLogin,
+            ConsentimientoService consentimientos
     ) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
@@ -57,32 +57,15 @@ public class AuthService {
         this.tokenRefrescoService = tokenRefrescoService;
         this.perfilOdontologoRepository = perfilOdontologoRepository;
         this.reputacionPacienteRepository = reputacionPacienteRepository;
-        this.verificacionCopRepository = verificacionCopRepository;
-        this.verificacionCopService = verificacionCopService;
+        this.verificacionColegiatura = verificacionColegiatura;
+        this.limiteLogin = limiteLogin;
+        this.consentimientos = consentimientos;
     }
 
     @Transactional
     public AuthResponse registrar(RegistroRequest request, HttpServletRequest httpRequest) {
-        if (usuarioRepository.existsByCorreo(request.correo())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya está registrado");
-        }
-        if (usuarioRepository.existsByNumeroDocumento(request.numeroDocumento())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El número de documento ya está registrado");
-        }
-        if (usuarioRepository.existsByTelefono(request.telefono())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El teléfono ya está registrado");
-        }
-
-        if (request.rol() == RolUsuario.ODONTOLOGO) {
-            if (request.numeroColegiatura() == null || request.numeroColegiatura().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "El número de colegiatura (COP) es obligatorio para registrarse como odontólogo");
-            }
-            if (perfilOdontologoRepository.existsByNumeroColegiatura(request.numeroColegiatura())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Ese número de colegiatura ya está registrado por otra cuenta");
-            }
-        }
+        validarDatosNuevos(request.correo(), request.numeroDocumento(), request.telefono(), request.rol(),
+                request.numeroColegiatura());
 
         Usuario usuario = Usuario.builder()
                 .numeroDocumento(request.numeroDocumento())
@@ -95,111 +78,110 @@ public class AuthService {
                 .metodoRegistro(MetodoAutenticacion.PASSWORD)
                 .build();
 
-        usuario = usuarioRepository.save(usuario);
+        return crearCuenta(usuario, request.numeroColegiatura(), httpRequest);
+    }
 
-        if (request.rol() == RolUsuario.PACIENTE) {
+    /** Revisa que correo, documento, teléfono y COP no estén usados por otra cuenta (409) y que el odontólogo traiga COP (400). */
+    public void validarDatosNuevos(String correo, String numeroDocumento, String telefono, RolUsuario rol,
+                                   String numeroColegiatura) {
+        if (usuarioRepository.existsByCorreo(correo)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya está registrado");
+        }
+        if (usuarioRepository.existsByNumeroDocumento(numeroDocumento)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El número de documento ya está registrado");
+        }
+        if (usuarioRepository.existsByTelefono(telefono)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El teléfono ya está registrado");
+        }
+
+        if (rol == RolUsuario.ODONTOLOGO) {
+            if (numeroColegiatura == null || numeroColegiatura.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "El número de colegiatura (COP) es obligatorio para registrarse como odontólogo");
+            }
+            if (perfilOdontologoRepository.existsByNumeroColegiatura(numeroColegiatura)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Ese número de colegiatura ya está registrado por otra cuenta");
+            }
+        }
+    }
+
+    /**
+     * Guarda la cuenta nueva (con contraseña o con Google), registra el consentimiento de privacidad, crea la
+     * reputación del paciente o el perfil del odontólogo (verificado en el COP) y entrega los tokens.
+     */
+    @Transactional
+    public AuthResponse crearCuenta(Usuario nuevo, String numeroColegiatura, HttpServletRequest httpRequest) {
+        Usuario usuario = usuarioRepository.save(nuevo);
+        // RNF07: queda registrado qué versión de la política aceptó, cuándo y desde qué IP
+        consentimientos.registrar(usuario.getId(), httpRequest.getRemoteAddr());
+
+        if (usuario.getRol() == RolUsuario.PACIENTE) {
             ReputacionPaciente reputacion = ReputacionPaciente.builder()
                     .usuario(usuario)
                     .build();
             reputacionPacienteRepository.save(reputacion);
         } else {
-            crearPerfilOdontologoConVerificacion(usuario, request.numeroColegiatura());
+            crearPerfilOdontologoConVerificacion(usuario, numeroColegiatura);
         }
 
-        UsuarioPrincipal principal = new UsuarioPrincipal(usuario);
-        String accessToken = jwtService.generateAccessToken(principal);
-        String refreshToken = tokenRefrescoService.crearParaUsuario(usuario, httpRequest);
-
-        return new AuthResponse(accessToken, refreshToken, usuario.getRol().name(), usuario.getNombreCompleto());
+        return emitirTokens(usuario, httpRequest);
     }
 
+    /** Access token (15 min) + refresh token nuevo para este dispositivo. */
+    public AuthResponse emitirTokens(Usuario usuario, HttpServletRequest httpRequest) {
+        String accessToken = jwtService.generateAccessToken(new UsuarioPrincipal(usuario));
+        String refreshToken = tokenRefrescoService.crearParaUsuario(usuario, httpRequest);
+        return new AuthResponse(accessToken, refreshToken, usuario.getRol().name(), usuario.getNombreCompleto(),
+                usuario.getEmailVerificadoEn() != null);
+    }
+
+    /** Crea el perfil y lo verifica en el COP; si el COP no responde, queda PENDIENTE y se reintenta solo (RF09). */
     private void crearPerfilOdontologoConVerificacion(Usuario usuario, String numeroColegiatura) {
-        PerfilOdontologo perfil = PerfilOdontologo.builder()
+        verificacionColegiatura.verificarYGuardar(PerfilOdontologo.builder()
                 .usuario(usuario)
                 .numeroColegiatura(numeroColegiatura)
-                .build();
-
-        var resultado = verificacionCopService.verificar(numeroColegiatura);
-
-        ResultadoVerificacionCop resultadoParaLog;
-        String detalle;
-
-        switch (resultado.estado()) {
-            case VERIFICADO_IDENTIDAD -> {
-                boolean nombreCoincide = nombresCoinciden(usuario.getNombreCompleto(), resultado.nombreEncontrado());
-                if (nombreCoincide) {
-                    perfil.setColegiaturaVerificada(true);
-                    perfil.setColegiaturaVerificadaEn(java.time.OffsetDateTime.now());
-                    perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.VERIFICADO);
-                    perfil.setVerificadoEn(java.time.OffsetDateTime.now());
-                    resultadoParaLog = ResultadoVerificacionCop.VERIFICADO;
-                    detalle = "Identidad confirmada contra el registro nacional COP: " + resultado.nombreEncontrado()
-                            + " (" + resultado.region() + ").";
-                } else {
-                    perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.OBSERVADO);
-                    perfil.setNotaObservacion("El nombre registrado no coincide claramente con el nombre encontrado en el COP ("
-                            + resultado.nombreEncontrado() + "). Requiere revisión.");
-                    resultadoParaLog = ResultadoVerificacionCop.RECHAZADO;
-                    detalle = "COP encontrado pero el nombre no coincide: esperado='" + usuario.getNombreCompleto()
-                            + "', encontrado='" + resultado.nombreEncontrado() + "'.";
-                }
-            }
-            case NO_ENCONTRADO -> {
-                perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.RECHAZADO);
-                perfil.setNotaObservacion("No se encontró el número de colegiatura " + numeroColegiatura + " en el registro nacional del COP.");
-                resultadoParaLog = ResultadoVerificacionCop.RECHAZADO;
-                detalle = "Número de COP no encontrado en el buscador nacional.";
-            }
-            default -> {
-                perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.PENDIENTE);
-                perfil.setNotaObservacion("No se pudo verificar automáticamente en este momento; se reintentará.");
-                resultadoParaLog = ResultadoVerificacionCop.ERROR;
-                detalle = "Error de red/parsing al consultar el buscador nacional del COP.";
-            }
-        }
-
-        perfilOdontologoRepository.save(perfil);
-
-        VerificacionCop log = VerificacionCop.builder()
-                .odontologo(perfil)
-                .numeroCop(numeroColegiatura)
-                .resultado(resultadoParaLog)
-                .detalle(detalle)
-                .build();
-        verificacionCopRepository.save(log);
+                .build());
     }
 
-    /** Compara nombres tolerando orden distinto, acentos y mayúsculas/minúsculas. */
-    private boolean nombresCoinciden(String nombreA, String nombreB) {
-        if (nombreB == null) return false;
-        Set<String> tokensA = normalizarYTokenizar(nombreA);
-        Set<String> tokensB = normalizarYTokenizar(nombreB);
-        long coincidencias = tokensA.stream().filter(tokensB::contains).count();
-        int minimo = Math.min(tokensA.size(), tokensB.size());
-        return coincidencias >= Math.max(1, minimo - 1); // tolera 1 token de diferencia
-    }
-
-    private Set<String> normalizarYTokenizar(String texto) {
-        String sinAcentos = Normalizer.normalize(texto, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .toUpperCase();
-        return Arrays.stream(sinAcentos.split("\\s+"))
-                .filter(t -> !t.isBlank())
-                .collect(Collectors.toCollection(HashSet::new));
-    }
-
+    /**
+     * Inicio de sesión con límite de intentos: 5 contraseñas incorrectas bloquean la cuenta 15 minutos
+     * y 20 fallos desde una misma IP bloquean esa IP (ver {@link LimiteLoginService}).
+     */
     public AuthResponse login(LoginRequest request, HttpServletRequest httpRequest) {
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.correo(), request.password())
-        );
+        String ip = httpRequest.getRemoteAddr();
+        limiteLogin.verificar(request.correo(), ip);
+
+        Authentication auth;
+        try {
+            auth = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.correo(), request.password())
+            );
+        } catch (BadCredentialsException e) {
+            int quedan = limiteLogin.registrarFallo(request.correo(), ip);
+            if (quedan == 0) {
+                throw new LoginBloqueadoException(limiteLogin.segundosDeBloqueo());
+            }
+            if (quedan > 0 && quedan <= 2) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Correo o contraseña incorrectos. Te "
+                        + (quedan == 1 ? "queda 1 intento" : "quedan " + quedan + " intentos")
+                        + " antes de que la cuenta se bloquee por unos minutos");
+            }
+            throw e;
+        }
+        limiteLogin.limpiar(request.correo());
 
         UsuarioPrincipal principal = (UsuarioPrincipal) auth.getPrincipal();
         String accessToken = jwtService.generateAccessToken(principal);
         String refreshToken = tokenRefrescoService.crearParaUsuario(principal.getUsuario(), httpRequest);
 
-        return new AuthResponse(accessToken, refreshToken, principal.getUsuario().getRol().name(), principal.getUsuario().getNombreCompleto());
+        return new AuthResponse(accessToken, refreshToken, principal.getUsuario().getRol().name(),
+                principal.getUsuario().getNombreCompleto(), principal.getUsuario().getEmailVerificadoEn() != null);
     }
 
+    // @Transactional: el Usuario del token se carga de forma perezosa (LAZY). Sin una transacción
+    // abierta aquí, leer usuario.getCorreo() lanza LazyInitializationException (open-in-view=false).
+    @Transactional
     public AuthResponse refrescar(String refreshTokenEntrante, HttpServletRequest httpRequest) {
         TokenRefrescoService.ResultadoRotacion resultado = tokenRefrescoService.rotar(refreshTokenEntrante, httpRequest);
 
@@ -207,6 +189,7 @@ public class AuthService {
         UsuarioPrincipal principal = new UsuarioPrincipal(usuario);
         String nuevoAccessToken = jwtService.generateAccessToken(principal);
 
-        return new AuthResponse(nuevoAccessToken, resultado.refreshTokenPlano(), usuario.getRol().name(), usuario.getNombreCompleto());
+        return new AuthResponse(nuevoAccessToken, resultado.refreshTokenPlano(), usuario.getRol().name(),
+                usuario.getNombreCompleto(), usuario.getEmailVerificadoEn() != null);
     }
-}
+}

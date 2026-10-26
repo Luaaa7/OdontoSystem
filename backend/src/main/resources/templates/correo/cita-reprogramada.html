@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head><meta charset="UTF-8"><title>Cita reprogramada</title></head>
+<body style="margin:0;padding:0;background:#f2f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f7;padding:24px 12px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr><td style="background:#0f766e;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:bold;">OdontoSystem</td></tr>
+      <tr><td style="padding:24px;">
+        <p style="font-size:18px;margin:0 0 12px;">Hola <span th:text="${saludo}">Ana</span>,</p>
+        <p th:unless="${paraOdontologo}" style="margin:0 0 16px;line-height:1.5;">
+          Tu cita fue <strong>reprogramada</strong>. Tu depósito sigue pagado: no tienes que volver a pagar.
+        </p>
+        <p th:if="${paraOdontologo}" style="margin:0 0 16px;line-height:1.5;">
+          <strong th:text="${paciente}">Luis</strong> <strong>reprogramó</strong> su cita contigo.
+          El depósito ya pagado pasa a la nueva fecha.
+        </p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdfa;border-radius:8px;">
+          <tr><td style="padding:16px;line-height:1.7;">
+            <div>🦷 <strong th:text="${servicio}">Resina estética</strong></div>
+            <div style="color:#7b8794;">Antes: <span style="text-decoration:line-through;"><span th:text="${fechaAnterior}">lunes 12 de octubre</span> a las <span th:text="${horaAnterior}">10:00</span></span></div>
+            <div>📅 Ahora: <strong th:text="${fecha}">miércoles 14 de octubre</strong> a las <strong th:text="${hora}">16:00</strong></div>
+            <div th:unless="${paraOdontologo}">📍 <span th:text="${consultorio}">Sonrisas Parcona</span> · <span th:text="${direccion}">Av. Principal 123</span></div>
+          </td></tr>
+        </table>
+        <p th:if="${pendienteDelOdontologo and !paraOdontologo}" style="margin:16px 0 0;line-height:1.5;">
+          El odontólogo todavía tiene que confirmar la cita; te avisaremos cuando lo haga.
+        </p>
+        <p th:if="${pendienteDelOdontologo and paraOdontologo}" style="margin:16px 0 0;line-height:1.5;">
+          Entra a OdontoSystem y <strong>confírmala</strong> para el nuevo horario.
+        </p>
+        <p th:unless="${paraOdontologo}" style="margin:16px 0 0;line-height:1.5;color:#52606d;">
+          Si al final no puedes asistir, puedes cancelarla desde la app.
+        </p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#f8fafc;color:#7b8794;font-size:12px;">
+        Este es un mensaje automático de OdontoSystem (Ica). No respondas a este correo.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
