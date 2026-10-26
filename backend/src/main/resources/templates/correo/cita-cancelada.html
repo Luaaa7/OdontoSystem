@@ -19,9 +19,12 @@
           a las <strong th:text="${hora}">10:00</strong> fue cancelada.
         </p>
         <p th:if="${motivo}" style="margin:0 0 16px;line-height:1.5;">Motivo: <span th:text="${motivo}">No se pagó el depósito a tiempo</span>.</p>
-        <p th:if="${conReembolso}" style="margin:0 0 16px;line-height:1.5;">
-          💵 Se te devolverá el depósito de <strong th:text="${deposito}">S/ 30.00</strong>.
-        </p>
+        <table th:if="${conReembolso}" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;background:#ecfdf5;border-left:4px solid #059669;border-radius:8px;">
+          <tr><td style="padding:12px 18px;line-height:1.5;">
+            <div style="font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#047857;">Reembolso</div>
+            <div>Se te devolverá el depósito de <strong th:text="${deposito}">S/ 30.00</strong>.</div>
+          </td></tr>
+        </table>
         <p th:if="${!conReembolso and !eraPendienteDePago}" style="margin:0 0 16px;line-height:1.5;color:#52606d;">
           Como se canceló con menos de 12 horas de anticipación, el depósito no es reembolsable.
         </p>

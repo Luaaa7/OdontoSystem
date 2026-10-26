@@ -189,7 +189,7 @@ public class ChatbotService {
             case CONSULTAR_HISTORIAL -> historial(c);
             case BUSCAR_ODONTOLOGO, AGENDAR_CITA -> iniciarBusqueda(c, intencion, distrito, normalizado);
             case DESCONOCIDA -> menu(c, "No entendí bien eso. Puedo ayudarte a:\n"
-                    + "🔍 Buscar un odontólogo\n📅 Agendar una cita\n🕐 Ver tus citas");
+                    + "• Buscar un odontólogo\n• Agendar una cita\n• Ver tus citas");
         };
     }
 
@@ -589,7 +589,7 @@ public class ChatbotService {
             }
             if (e.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
                 return mostrarTurnos(c, ctx, LocalDate.parse(ctx.getFecha()),
-                        "Ese horario se acaba de ocupar 😕. Te muestro los que siguen libres.");
+                        "Ese horario se acaba de ocupar. Te muestro los que siguen libres.");
             }
             return menu(c, e.getReason() != null ? e.getReason() + "." : "No pude reservar la cita. Intenta de nuevo.");
         }

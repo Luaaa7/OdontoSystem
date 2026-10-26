@@ -16,12 +16,14 @@
           <strong th:text="${paciente}">Luis</strong> reservó una cita contigo y ya pagó el depósito.
           Entra a OdontoSystem y <strong>confírmala</strong> para que el paciente reciba su confirmación.
         </p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdfa;border-radius:8px;">
-          <tr><td style="padding:16px;line-height:1.7;">
-            <div>🦷 <strong th:text="${servicio}">Resina estética</strong></div>
-            <div>📅 <strong th:text="${fecha}">lunes 12 de octubre</strong> a las <strong th:text="${hora}">10:00</strong></div>
-            <div th:if="${deposito}">💵 Depósito recibido: <span th:text="${deposito}">S/ 30.00</span></div>
-            <div th:if="${precio}">🧾 Precio total: <span th:text="${precio}">S/ 150.00</span></div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdfa;border-left:4px solid #0f766e;border-radius:8px;">
+          <tr><td style="padding:6px 18px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding:11px 12px 9px 0;width:118px;vertical-align:top;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#0f766e;">Servicio</td><td style="padding:9px 0;font-size:15px;line-height:1.45;color:#1f2933;"><strong th:text="${servicio}">Resina estética</strong></td></tr>
+              <tr><td style="padding:11px 12px 9px 0;width:118px;vertical-align:top;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#0f766e;border-top:1px solid #cdeee7;">Fecha y hora</td><td style="padding:9px 0;font-size:15px;line-height:1.45;color:#1f2933;border-top:1px solid #cdeee7;"><strong th:text="${fecha}">lunes 12 de octubre</strong> a las <strong th:text="${hora}">10:00</strong></td></tr>
+              <tr th:if="${deposito}"><td style="padding:11px 12px 9px 0;width:118px;vertical-align:top;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#0f766e;border-top:1px solid #cdeee7;">Depósito</td><td style="padding:9px 0;font-size:15px;line-height:1.45;color:#1f2933;border-top:1px solid #cdeee7;"><span th:text="${deposito}">S/ 30.00</span> <span style="color:#52606d;font-size:13px;">(recibido)</span></td></tr>
+              <tr th:if="${precio}"><td style="padding:11px 12px 9px 0;width:118px;vertical-align:top;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#0f766e;border-top:1px solid #cdeee7;">Precio total</td><td style="padding:9px 0;font-size:15px;line-height:1.45;color:#1f2933;border-top:1px solid #cdeee7;"><strong th:text="${precio}">S/ 150.00</strong></td></tr>
+            </table>
           </td></tr>
         </table>
       </td></tr>
