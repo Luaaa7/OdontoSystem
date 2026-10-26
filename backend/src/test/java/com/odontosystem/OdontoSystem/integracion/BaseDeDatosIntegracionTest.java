@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Pruebas de integración contra un PostgreSQL 17 + PostGIS REAL (Docker, Testcontainers): se aplican las migraciones
- * V1..V9 desde cero y se comprueban las reglas que viven en la base de datos (triggers y restricciones), que las
+ * V1..V10 desde cero y se comprueban las reglas que viven en la base de datos (triggers y restricciones), que las
  * pruebas unitarias con mocks no pueden cubrir.
  * <p>
  * Si la máquina no tiene Docker (p. ej. la laptop sin Docker Desktop), estas pruebas se SALTAN solas; en GitHub
@@ -164,15 +164,29 @@ class BaseDeDatosIntegracionTest {
     // ------------------------------------------------------------------ pruebas
 
     @Test
-    @DisplayName("Las 9 migraciones se aplican desde cero y Hibernate valida todas las entidades contra el esquema")
+    @DisplayName("Las 10 migraciones se aplican desde cero y Hibernate valida todas las entidades contra el esquema")
     void migraciones() {
         Integer ultima = jdbc.queryForObject(
                 "SELECT max(version::int) FROM flyway_schema_history WHERE type = 'SQL' AND success", Integer.class);
         Integer fallidas = jdbc.queryForObject(
                 "SELECT count(*) FROM flyway_schema_history WHERE NOT success", Integer.class);
-        assertThat(ultima).isEqualTo(9);
+        assertThat(ultima).isEqualTo(10);
         assertThat(fallidas).isZero();
         // Si alguna entidad no coincidiera con la tabla (ddl-auto=validate), el contexto ni siquiera arrancaría.
+    }
+
+    @Test
+    @DisplayName("Reputación: un PACIENTE recién registrado puede tener su fila; un ODONTOLOGO no (V10)")
+    void reputacionSoloPacientes() {
+        UUID paciente = usuario("PACIENTE");
+        jdbc.update("INSERT INTO reputacion_paciente (usuario_id) VALUES (?)", paciente);
+        assertThat(jdbc.queryForObject("SELECT estado::text FROM reputacion_paciente WHERE usuario_id = ?",
+            String.class, paciente)).isEqualTo("EXCELENTE");
+
+        UUID odontologo = usuario("ODONTOLOGO");
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO reputacion_paciente (usuario_id) VALUES (?)", odontologo))
+            .isInstanceOf(DataAccessException.class)
+            .hasMessageContaining("rol PACIENTE");
     }
 
     @Test
