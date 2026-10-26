@@ -14,6 +14,8 @@ import com.odontosystem.OdontoSystem.repository.FotoConsultorioRepository;
 import com.odontosystem.OdontoSystem.repository.PerfilOdontologoRepository;
 import com.odontosystem.OdontoSystem.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +35,8 @@ import java.util.UUID;
 public class GestionArchivosService {
 
     static final int MAXIMO_FOTOS_CONSULTORIO = 10;
+
+    private static final Logger log = LoggerFactory.getLogger(GestionArchivosService.class);
 
     private final ArchivoService archivoService;
     private final UsuarioRepository usuarioRepository;
@@ -88,8 +92,24 @@ public class GestionArchivosService {
         exigirPerfilOdontologo(odontologoId);
         return documentoRepository.findByOdontologoIdAndReemplazadoEnIsNullOrderByTipoDocumentoAsc(odontologoId)
                 .stream()
-                .map(this::aRespuesta)
+                .map(this::aRespuestaSinEnlaceSiFalla)
                 .toList();
+    }
+
+    /**
+     * En el listado, un documento cuyo enlace no se puede generar (URL que no es de Cloudinary, por ejemplo en
+     * datos de prueba, o Cloudinary sin responder) se devuelve igual, sin url_temporal, en lugar de romper toda
+     * la lista con un 500. El motivo queda en el log, sin la URL completa.
+     */
+    private DocumentoResponse aRespuestaSinEnlaceSiFalla(DocumentoOdontologo documento) {
+        try {
+            return aRespuesta(documento);
+        } catch (IllegalStateException | ResponseStatusException e) {
+            log.warn("Documento {} ({}) sin enlace temporal: {}", documento.getId(), documento.getTipoDocumento(),
+                    e.getClass().getSimpleName());
+            return new DocumentoResponse(documento.getId(), documento.getTipoDocumento(), documento.getSubidoEn(),
+                    null, null);
+        }
     }
 
     // ------------------------------------------------------------------

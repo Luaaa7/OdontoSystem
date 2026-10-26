@@ -92,6 +92,48 @@ class GestionArchivosServiceTest {
     }
 
     @Test
+    @DisplayName("Listado: un documento con URL no reconocida sale sin enlace y no rompe la lista")
+    void listadoToleraUrlNoReconocida() {
+        DocumentoOdontologo bueno = DocumentoOdontologo.builder()
+                .id(UUID.randomUUID()).odontologoId(odontologoId).tipoDocumento(TipoDocumentoOdontologo.DNI)
+                .urlArchivo("https://res.cloudinary.com/x/dni.pdf").subidoEn(OffsetDateTime.now()).build();
+        DocumentoOdontologo deEjemplo = DocumentoOdontologo.builder()
+                .id(UUID.randomUUID()).odontologoId(odontologoId).tipoDocumento(TipoDocumentoOdontologo.TITULO_PROFESIONAL)
+                .urlArchivo("https://example.com/titulo.pdf").subidoEn(OffsetDateTime.now()).build();
+        when(perfilOdontologoRepository.existsById(odontologoId)).thenReturn(true);
+        when(documentoRepository.findByOdontologoIdAndReemplazadoEnIsNullOrderByTipoDocumentoAsc(odontologoId))
+                .thenReturn(List.of(bueno, deEjemplo));
+        when(archivoService.enlaceTemporal("https://res.cloudinary.com/x/dni.pdf"))
+                .thenReturn(new EnlaceTemporal("https://firmado", OffsetDateTime.now().plusMinutes(10)));
+        when(archivoService.enlaceTemporal("https://example.com/titulo.pdf"))
+                .thenThrow(new IllegalStateException("URL de Cloudinary no reconocida"));
+
+        List<DocumentoResponse> lista = servicio.listarDocumentos(odontologoId);
+
+        assertThat(lista).hasSize(2);
+        assertThat(lista.get(0).urlTemporal()).isEqualTo("https://firmado");
+        assertThat(lista.get(1).tipo()).isEqualTo(TipoDocumentoOdontologo.TITULO_PROFESIONAL);
+        assertThat(lista.get(1).urlTemporal()).isNull();
+        assertThat(lista.get(1).urlExpiraEn()).isNull();
+    }
+
+    @Test
+    @DisplayName("Listado: si Cloudinary no responde, los documentos siguen apareciendo sin enlace")
+    void listadoToleraCloudinaryCaido() {
+        DocumentoOdontologo doc = DocumentoOdontologo.builder()
+                .id(UUID.randomUUID()).odontologoId(odontologoId).tipoDocumento(TipoDocumentoOdontologo.DNI)
+                .urlArchivo("https://res.cloudinary.com/x/dni.pdf").subidoEn(OffsetDateTime.now()).build();
+        when(perfilOdontologoRepository.existsById(odontologoId)).thenReturn(true);
+        when(documentoRepository.findByOdontologoIdAndReemplazadoEnIsNullOrderByTipoDocumentoAsc(odontologoId))
+                .thenReturn(List.of(doc));
+        when(archivoService.enlaceTemporal("https://res.cloudinary.com/x/dni.pdf"))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY, "No se pudo generar el enlace del documento"));
+
+        assertThat(servicio.listarDocumentos(odontologoId)).singleElement()
+                .satisfies(d -> assertThat(d.urlTemporal()).isNull());
+    }
+
+    @Test
     @DisplayName("Documento nuevo reemplaza al anterior del mismo tipo")
     void documentoReemplazaAnterior() {
         DocumentoOdontologo anterior = DocumentoOdontologo.builder()
