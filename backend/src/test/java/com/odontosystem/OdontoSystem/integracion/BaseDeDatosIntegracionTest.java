@@ -187,8 +187,8 @@ class BaseDeDatosIntegracionTest {
         assertThatThrownBy(() -> jdbc.update("INSERT INTO reputacion_paciente (usuario_id) VALUES (?)", odontologo))
             .isInstanceOf(DataAccessException.class)
             .hasMessageContaining("rol PACIENTE");
-}   
-    
+    }
+
     @Test
     @DisplayName("Doble reserva: la BD rechaza dos citas activas del mismo odontólogo que se cruzan (ex_citas_sin_solape)")
     void sinDobleReserva() {
