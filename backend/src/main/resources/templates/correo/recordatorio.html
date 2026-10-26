@@ -12,12 +12,14 @@
           Te recordamos que <strong th:text="${cuando}">mañana</strong> tienes tu cita de
           <strong th:text="${servicio}">Limpieza dental</strong>.
         </p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdfa;border-radius:8px;">
-          <tr><td style="padding:16px;line-height:1.7;">
-            <div>📅 <strong th:text="${fecha}">lunes 12 de octubre</strong> a las <strong th:text="${hora}">10:00</strong></div>
-            <div>🦷 <span th:text="${odontologo}">Dra. Ana Torres</span></div>
-            <div th:if="${consultorio}">🏥 <span th:text="${consultorio}">Sonrisas</span></div>
-            <div th:if="${direccion}">📍 <span th:text="${direccion}">Av. Principal 123</span><span th:if="${distrito}" th:text="${', ' + distrito}">, Parcona</span></div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdfa;border-left:4px solid #0f766e;border-radius:8px;">
+          <tr><td style="padding:6px 18px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding:11px 12px 9px 0;width:118px;vertical-align:top;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#0f766e;">Fecha y hora</td><td style="padding:9px 0;font-size:15px;line-height:1.45;color:#1f2933;"><strong th:text="${fecha}">lunes 12 de octubre</strong> a las <strong th:text="${hora}">10:00</strong></td></tr>
+              <tr><td style="padding:11px 12px 9px 0;width:118px;vertical-align:top;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#0f766e;border-top:1px solid #cdeee7;">Odontólogo</td><td style="padding:9px 0;font-size:15px;line-height:1.45;color:#1f2933;border-top:1px solid #cdeee7;"><span th:text="${odontologo}">Dra. Ana Torres</span></td></tr>
+              <tr th:if="${consultorio}"><td style="padding:11px 12px 9px 0;width:118px;vertical-align:top;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#0f766e;border-top:1px solid #cdeee7;">Consultorio</td><td style="padding:9px 0;font-size:15px;line-height:1.45;color:#1f2933;border-top:1px solid #cdeee7;"><span th:text="${consultorio}">Sonrisas</span></td></tr>
+              <tr th:if="${direccion}"><td style="padding:11px 12px 9px 0;width:118px;vertical-align:top;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-transform:uppercase;color:#0f766e;border-top:1px solid #cdeee7;">Dirección</td><td style="padding:9px 0;font-size:15px;line-height:1.45;color:#1f2933;border-top:1px solid #cdeee7;"><span th:text="${direccion}">Av. Principal 123</span><span th:if="${distrito}" th:text="${', ' + distrito}">, Parcona</span></td></tr>
+            </table>
           </td></tr>
         </table>
         <p th:if="${enPocasHoras}" style="margin:16px 0 0;line-height:1.5;">Te sugerimos llegar 10 minutos antes.</p>
