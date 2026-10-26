@@ -22,9 +22,9 @@ Proyecto final · **Curso Integrador I: Sistemas - Software** · UTP · Ciclo VI
 Los pacientes **encuentran odontólogos verificados cerca de ellos**, reservan un turno libre, pagan el depósito de garantía en línea y reciben recordatorios.
 El odontólogo independiente gestiona su agenda, confirma citas y cobra sus liquidaciones **sin un administrador humano**: las reglas las ejecuta el backend de forma automática (arquitectura *Admin-less*).
 
-| Búsqueda por cercanía | Reserva y reprogramación | Pago del depósito | Chatbot con contexto | Verificación COP y RENIEC |
+| Búsqueda por cercanía | Reserva y reprogramación | Pago del depósito | Chatbot con contexto | Verificación del odontólogo |
 |:---:|:---:|:---:|:---:|:---:|
-| PostGIS + filtros por distrito | Sin solapes, garantizado en la BD | Mercado Pago (modo prueba) | Detección de intenciones | Tareas automáticas |
+| PostGIS + filtros por distrito | Sin solapes, garantizado en la BD | Mercado Pago (modo prueba) | Detección de intenciones | Colegiatura (COP) y DNI (RENIEC vía Factiliza) |
 
 ## Equipo
 
@@ -47,7 +47,7 @@ flowchart LR
     end
     RP --> DB[(PostgreSQL 17 + PostGIS<br/>Supabase)]
     SV --> R[(Redis<br/>Upstash)]
-    SV --> EXT[Mercado Pago · Brevo · Firebase<br/>Cloudinary · COP · RENIEC]
+    SV --> EXT[Mercado Pago · Brevo · Firebase<br/>Cloudinary · COP · Factiliza]
 ```
 
 Arquitectura en capas (monolito modular) que aplica **MVC**, **DAO**, **TDD** y **SOLID**. El detalle está en el capítulo 10 del documento del proyecto, en [`docs/avances/`](docs/avances).
