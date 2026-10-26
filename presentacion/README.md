@@ -1,9 +1,3 @@
-# Presentación — OdontoSystem
+# Presentaciones — OdontoSystem
 
-Pendiente: subir aquí las diapositivas del proyecto (PDF o PPTX).
-
-Debe incluir:
-- Problema y justificación tecnológica
-- Arquitectura de la solución (diagrama)
-- Demo / resultados
-- Roles del equipo (Sebastián, Nicole, Luana)
+Diapositivas de las sustentaciones del proyecto final (máximo 10 minutos; exponen los tres integrantes).

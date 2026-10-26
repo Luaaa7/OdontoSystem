@@ -1,10 +1,8 @@
 # Documentación de OdontoSystem
 
-Esta carpeta contiene el material de soporte técnico del proyecto:
+| Archivo / carpeta | Contenido |
+|---|---|
+| `avances/` | Avances del proyecto final (A1, A2 y A3) entregados al curso |
+| `arbol-conversacion-chatbot.md` | Intenciones del chatbot y flujo de la conversación |
 
-- `lean-canvas.png` — Lean Canvas del modelo de negocio
-- `arbol-conversacion-chatbot.md` — flujo de intents del chatbot (BUSCAR_ODONTOLOGO, AGENDAR_CITA, CONSULTAR_HISTORIAL)
-- `diagrama-arquitectura.png` — diagrama de la arquitectura general (backend, frontend, BD, chatbot)
-- `diagrama-er.png` — diagrama entidad-relación de la base de datos
-
-> Pendiente: exportar e incluir cada archivo aquí antes de la entrega.
+La documentación de la API está en Swagger (`/swagger-ui.html`) y la del código en Javadoc (`./mvnw javadoc:javadoc` dentro de `backend/`).
