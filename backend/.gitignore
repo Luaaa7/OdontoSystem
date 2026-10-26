@@ -34,3 +34,5 @@ build/
 
 
 .env
+# Logs locales de Logback (perfil local)
+logs/
