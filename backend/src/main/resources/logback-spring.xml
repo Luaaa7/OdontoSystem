@@ -45,10 +45,16 @@
     <logger name="com.zaxxer.hikari" level="WARN"/>
     <logger name="org.flywaydb" level="INFO"/>
 
-    <root level="INFO">
-        <appender-ref ref="CONSOLA"/>
-        <springProfile name="local">
+    <!-- Spring Boot no permite <springProfile> dentro de <root>: se define un <root> por perfil. -->
+    <springProfile name="local">
+        <root level="INFO">
+            <appender-ref ref="CONSOLA"/>
             <appender-ref ref="ARCHIVO"/>
-        </springProfile>
-    </root>
+        </root>
+    </springProfile>
+    <springProfile name="!local">
+        <root level="INFO">
+            <appender-ref ref="CONSOLA"/>
+        </root>
+    </springProfile>
 </configuration>
