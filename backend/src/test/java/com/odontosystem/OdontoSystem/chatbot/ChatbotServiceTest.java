@@ -463,6 +463,48 @@ class ChatbotServiceTest {
     }
 
     @Test
+    @DisplayName("\"¿Cuánto cuesta una limpieza con la Dra. Torres?\" responde el precio de ese servicio y sigue a reservar")
+    void precioConNombre() {
+        conAnaEnParcona();
+        when(busqueda.buscar(any())).thenAnswer(i -> {
+            FiltroBusqueda f = i.getArgument(0);
+            List<OdontologoTarjeta> r = "torres".equals(f.q()) ? List.of(tarjeta(anaId, "Dra. Ana Torres", "Parcona")) : List.of();
+            return new Pagina<>(r, 0, 50, r.size(), 1);
+        });
+
+        RespuestaChatbot respuesta = escribir("¿Cuánto cuesta una limpieza con la Dra. Torres?");
+
+        assertThat(respuesta.tipo()).isEqualTo(RespuestaChatbot.LISTA_SERVICIOS);
+        assertThat(respuesta.mensaje())
+                .contains("Limpieza dental cuesta S/ 80.00")
+                .contains("S/ 16.00")
+                .doesNotContain("Resina");
+        assertThat(contextoGuardado().getOdontologoId()).isEqualTo(anaId.toString());
+    }
+
+    @Test
+    @DisplayName("Una pregunta de precio sin odontólogo pide con quién o en qué distrito")
+    void precioSinNombre() {
+        conAnaEnParcona();
+        RespuestaChatbot respuesta = escribir("precios");
+
+        assertThat(respuesta.mensaje()).contains("El precio depende del odontólogo");
+        verify(perfiles, never()).perfilPublico(any());
+    }
+
+    @Test
+    @DisplayName("El servicio mencionado se elige por las palabras de su título")
+    void servicioMencionado() {
+        List<ServicioResponse> servicios = List.of(servicio(limpiezaId, "Limpieza dental", "80", "16"),
+                servicio(resinaId, "Evaluación ortodóntica", "95", "19"));
+
+        assertThat(ChatbotService.servicioMencionado(servicios, "cuanto cuesta una evaluacion de ortodoncia"))
+                .map(ServicioResponse::titulo).contains("Evaluación ortodóntica");
+        assertThat(ChatbotService.servicioMencionado(servicios, "cuanto cuesta")).isEmpty();
+        assertThat(ChatbotService.servicioMencionado(servicios, "precio de un implante")).isEmpty();
+    }
+
+    @Test
     @DisplayName("Un odontólogo no puede agendar por el chat")
     void odontologoNoAgenda() {
         paciente.setRol(RolUsuario.ODONTOLOGO);

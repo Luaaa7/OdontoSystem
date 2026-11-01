@@ -188,8 +188,9 @@ public class ChatbotService {
             case SALUDO -> saludar(c);
             case CONSULTAR_HISTORIAL -> historial(c);
             case BUSCAR_ODONTOLOGO, AGENDAR_CITA -> iniciarBusqueda(c, intencion, distrito, normalizado);
+            case CONSULTAR_PRECIO -> consultarPrecio(c, distrito, normalizado);
             case DESCONOCIDA -> menu(c, "No entendí bien eso. Puedo ayudarte a:\n"
-                    + "• Buscar un odontólogo\n• Agendar una cita\n• Ver tus citas");
+                    + "• Buscar un odontólogo\n• Agendar una cita\n• Consultar precios\n• Ver tus citas");
         };
     }
 
@@ -363,6 +364,66 @@ public class ChatbotService {
         return preguntarDistrito(c, intencion);
     }
 
+    /** Palabras de una pregunta de precio que no dicen qué servicio es. */
+    private static final Set<String> PALABRAS_DE_PRECIO = Set.of("cuanto", "cuesta", "cuestan", "cobra", "cobran",
+            "sale", "vale", "precio", "precios", "costo", "costos", "tarifa", "tarifas", "lista", "doctor", "doctora",
+            "odontologo", "odontologa", "consulta", "quiero", "saber");
+
+    /**
+     * "¿Cuánto cuesta una evaluación de ortodoncia con Manuel Palomino?": si nombra al odontólogo, muestra sus
+     * servicios con precio (y el del servicio mencionado); si nombra un distrito, los odontólogos de ahí; si no,
+     * pregunta con quién.
+     */
+    private Vuelta consultarPrecio(Conversacion c, Optional<String> distrito, String normalizado) {
+        Matcher m = NOMBRE_DOCTOR.matcher(normalizado);
+        if (m.find()) {
+            String nombre = FIN_DEL_NOMBRE.split(m.group(1).trim(), 2)[0].trim();
+            if (nombre.length() >= 3) {
+                List<OdontologoTarjeta> encontrados = busquedaService.buscar(
+                        new FiltroBusqueda(null, null, null, nombre, null, null, null, "calificacion", 0, 50)).contenido();
+                if (encontrados.size() == 1) {
+                    return elegirOdontologo(c, new ContextoChat(), encontrados.get(0).id(),
+                            normalizado.replace(nombre, " "));
+                }
+                if (!encontrados.isEmpty()) {
+                    return listarOdontologos(c, Intencion.AGENDAR_CITA,
+                            encontrados.stream().limit(MAX_RESULTADOS).toList(),
+                            "Encontré varios odontólogos con \"" + nombre + "\". ¿De cuál quieres ver los precios?", null);
+                }
+                return preguntarDistrito(c, Intencion.BUSCAR_ODONTOLOGO,
+                        "No encontré un odontólogo llamado \"" + nombre + "\". ¿En qué distrito lo buscamos? "
+                                + "Te muestro sus servicios con precio.");
+            }
+        }
+        if (distrito.isPresent()) {
+            return buscarEnDistrito(c, Intencion.BUSCAR_ODONTOLOGO, distrito.get());
+        }
+        return preguntarDistrito(c, Intencion.BUSCAR_ODONTOLOGO,
+                "El precio depende del odontólogo y del servicio. Dime con quién (por ejemplo: \"precio con la "
+                        + "Dra. Torres\") o elige un distrito y te muestro sus servicios con precio.");
+    }
+
+    /** El servicio que más coincide con las palabras de la pregunta ("evaluación de ortodoncia"), si alguno. */
+    static Optional<ServicioResponse> servicioMencionado(List<ServicioResponse> servicios, String normalizado) {
+        List<String> palabras = List.of(normalizado.split(" ")).stream()
+                .filter(p -> p.length() >= 4 && !PALABRAS_DE_PRECIO.contains(p))
+                .toList();
+        if (palabras.isEmpty()) {
+            return Optional.empty();
+        }
+        ServicioResponse mejor = null;
+        long mejorPuntaje = 0;
+        for (ServicioResponse s : servicios) {
+            String titulo = IntentDetector.normalizar(s.titulo());
+            long puntaje = palabras.stream().filter(titulo::contains).count();
+            if (puntaje > mejorPuntaje) {
+                mejor = s;
+                mejorPuntaje = puntaje;
+            }
+        }
+        return Optional.ofNullable(mejor);
+    }
+
     private Vuelta preguntarDistrito(Conversacion c, Intencion intencion) {
         return preguntarDistrito(c, intencion, null);
     }
@@ -430,6 +491,14 @@ public class ChatbotService {
     }
 
     private Vuelta elegirOdontologo(Conversacion c, ContextoChat anterior, UUID odontologoId) {
+        return elegirOdontologo(c, anterior, odontologoId, null);
+    }
+
+    /**
+     * @param preguntaDePrecio el mensaje normalizado si el usuario preguntó un precio ("cuánto cuesta una limpieza
+     *                         con la Dra. Torres"): se responde el precio del servicio que mencionó, si lo hay.
+     */
+    private Vuelta elegirOdontologo(Conversacion c, ContextoChat anterior, UUID odontologoId, String preguntaDePrecio) {
         if (c.rol() == RolUsuario.ODONTOLOGO) {
             return soloPacientes(c);
         }
@@ -458,8 +527,18 @@ public class ChatbotService {
         List<Opcion> opciones = servicios.stream()
                 .map(s -> new Opcion(s.titulo() + " · " + soles(s.precioTotal()), "elegir_servicio", s.id().toString()))
                 .toList();
+        String mensaje = perfil.nombre() + " ofrece estos servicios. ¿Cuál necesitas?";
+        if (preguntaDePrecio != null) {
+            mensaje = servicioMencionado(servicios, preguntaDePrecio)
+                    .map(s -> "Con " + perfil.nombre() + ", " + s.titulo() + " cuesta " + soles(s.precioTotal())
+                            + " (para reservar pagas un depósito de " + soles(s.montoDeposito()) + "; dura "
+                            + s.duracionMinutos() + " min). Estos son todos sus servicios con precio; elige uno para ver"
+                            + " sus horarios:")
+                    .orElse("Estos son los servicios de " + perfil.nombre() + " con su precio. Elige uno para ver sus"
+                            + " horarios:");
+        }
         return new Vuelta(Intencion.AGENDAR_CITA, respuesta(c, RespuestaChatbot.LISTA_SERVICIOS,
-                perfil.nombre() + " ofrece estos servicios. ¿Cuál necesitas?", Intencion.AGENDAR_CITA,
+                mensaje, Intencion.AGENDAR_CITA,
                 servicios, List.of("elegir_servicio"), opciones), ctx);
     }
 

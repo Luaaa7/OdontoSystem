@@ -30,6 +30,13 @@ class IntentDetectorTest {
             ¿Hay especialistas en ortodoncia?                | BUSCAR_ODONTOLOGO
             quiero ponerme brackets                          | BUSCAR_ODONTOLOGO
             necesito una cita para mañana                    | BUSCAR_ODONTOLOGO
+            # ---- CONSULTAR_PRECIO ----
+            ¿Cuánto cuesta una evaluación de ortodoncia con Manuel Palomino? | CONSULTAR_PRECIO
+            ¿cuánto cuesta un implante de dientes?           | CONSULTAR_PRECIO
+            cuánto cobra la Dra. Torres por una limpieza     | CONSULTAR_PRECIO
+            precios                                          | CONSULTAR_PRECIO
+            ¿cuál es el precio de la consulta?               | CONSULTAR_PRECIO
+            lista de precios                                 | CONSULTAR_PRECIO
             # ---- AGENDAR_CITA ----
             Ver disponibilidad                               | AGENDAR_CITA
             quiero agendar con el Dr. Pérez                  | AGENDAR_CITA

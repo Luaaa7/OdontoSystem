@@ -78,11 +78,13 @@ public class NotificacionService {
     private final Clock clock;
     private final TransactionTemplate transaccion;
     private final PushService push;
+    private final BandejaNotificaciones bandeja;
 
     public NotificacionService(RecordatorioCitaRepository recordatorioRepository,
             RegistroNotificacionRepository registroRepository,
             CitaRepository citaRepository, EnviadorCorreo enviador, PlantillasCorreo plantillas,
-            Clock clock, PlatformTransactionManager transactionManager, PushService push) {
+            Clock clock, PlatformTransactionManager transactionManager, PushService push,
+            BandejaNotificaciones bandeja) {
         this.recordatorioRepository = recordatorioRepository;
         this.registroRepository = registroRepository;
         this.citaRepository = citaRepository;
@@ -91,6 +93,7 @@ public class NotificacionService {
         this.clock = clock;
         this.transaccion = new TransactionTemplate(transactionManager);
         this.push = push;
+        this.bandeja = bandeja;
     }
 
     /** Un correo listo para salir. */
@@ -99,7 +102,12 @@ public class NotificacionService {
      * aviso.
      */
     record Correo(UUID usuarioId, String para, String nombre, String asunto, String html, TipoNotificacion tipo,
-            String tituloPush) {
+            String tituloPush, UUID citaId) {
+        /** Aviso que no es de una cita en particular (p. ej. un strike). */
+        Correo(UUID usuarioId, String para, String nombre, String asunto, String html, TipoNotificacion tipo,
+                String tituloPush) {
+            this(usuarioId, para, nombre, asunto, html, tipo, tituloPush, null);
+        }
     }
 
     // ==================================================================
@@ -251,7 +259,7 @@ public class NotificacionService {
                 alOdontologo.put("paciente", cita.getPaciente().getNombreCompleto());
                 lista.add(new Correo(odontologo.getId(), odontologo.getCorreo(), odontologo.getNombreCompleto(),
                         "Cita reprogramada · " + cuando, plantillas.armar("cita-reprogramada", alOdontologo),
-                        TipoNotificacion.AVISO_REPROGRAMACION, null));
+                        TipoNotificacion.AVISO_REPROGRAMACION, null, cita.getId()));
             }
             return lista;
         }).orElseGet(List::of));
@@ -335,7 +343,7 @@ public class NotificacionService {
         // propio título.
         return Optional.of(new Correo(usuario.getId(), usuario.getCorreo(), usuario.getNombreCompleto(), asunto,
                 plantillas.armar("cita-nueva-odontologo", v), TipoNotificacion.CONFIRMACION_PAGO,
-                porConfirmar ? "Nueva cita por confirmar" : "Nueva cita reservada"));
+                porConfirmar ? "Nueva cita por confirmar" : "Nueva cita reservada", cita.getId()));
     }
 
     // ==================================================================
@@ -362,7 +370,7 @@ public class NotificacionService {
     private static Correo correoAlPaciente(Cita cita, String asunto, String html, TipoNotificacion tipo) {
         var paciente = cita.getPaciente();
         return new Correo(paciente.getId(), paciente.getCorreo(), paciente.getNombreCompleto(), asunto, html, tipo,
-                null);
+                null, cita.getId());
     }
 
     /**
@@ -388,8 +396,30 @@ public class NotificacionService {
         } catch (RuntimeException e) {
             log.warn("No se pudo registrar la notificación: {}", e.getMessage());
         }
+        guardarEnBandeja(correo);
         avisarPorPush(correo);
         return ok;
+    }
+
+    /** El mismo aviso en la campanita de la app (aunque el correo haya fallado). Nunca lanza. */
+    private void guardarEnBandeja(Correo correo) {
+        try {
+            bandeja.registrar(correo.usuarioId(), correo.tipo().name(), tituloDe(correo), correo.asunto(),
+                    correo.citaId());
+        } catch (RuntimeException e) {
+            log.warn("No se pudo guardar el aviso en la bandeja: {}", e.getMessage());
+        }
+    }
+
+    /** Título corto del aviso (push y bandeja): el propio del correo o uno según el tipo. */
+    static String tituloDe(Correo correo) {
+        return correo.tituloPush() != null ? correo.tituloPush() : switch (correo.tipo()) {
+            case RECORDATORIO_CITA -> "Recordatorio de tu cita";
+            case AVISO_CANCELACION -> "Cita cancelada";
+            case AVISO_REPROGRAMACION -> "Cita reprogramada";
+            case CONFIRMACION_PAGO -> "Tu cita en OdontoSystem";
+            default -> "OdontoSystem";
+        };
     }
 
     /**
@@ -398,14 +428,8 @@ public class NotificacionService {
      */
     private void avisarPorPush(Correo correo) {
         try {
-            String titulo = correo.tituloPush() != null ? correo.tituloPush() : switch (correo.tipo()) {
-                case RECORDATORIO_CITA -> "Recordatorio de tu cita";
-                case AVISO_CANCELACION -> "Cita cancelada";
-                case AVISO_REPROGRAMACION -> "Cita reprogramada";
-                case CONFIRMACION_PAGO -> "Tu cita en OdontoSystem";
-                default -> "OdontoSystem";
-            };
-            push.enviarAUsuario(correo.usuarioId(), titulo, correo.asunto(), Map.of("tipo", correo.tipo().name()));
+            push.enviarAUsuario(correo.usuarioId(), tituloDe(correo), correo.asunto(),
+                    Map.of("tipo", correo.tipo().name()));
         } catch (RuntimeException e) {
             log.warn("No se pudo enviar la push: {}", e.getMessage());
         }

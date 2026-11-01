@@ -13,6 +13,8 @@ public enum Intencion {
     AGENDAR_CITA,
     /** "mis citas", "mi historial", "cuándo es mi próxima cita". */
     CONSULTAR_HISTORIAL,
+    /** "¿cuánto cuesta una limpieza con la Dra. Torres?", "precios", "¿cuánto cobra?". */
+    CONSULTAR_PRECIO,
     /** No se reconoció ninguna intención: el bot muestra el menú de ayuda. */
     DESCONOCIDA
 }

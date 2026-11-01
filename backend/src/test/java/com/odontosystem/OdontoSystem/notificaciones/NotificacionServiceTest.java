@@ -74,6 +74,8 @@ class NotificacionServiceTest {
         private PushService push;
         @Mock
         private PlatformTransactionManager transacciones;
+        @Mock
+        private BandejaNotificaciones bandeja;
 
         private NotificacionService servicio;
 
@@ -88,7 +90,7 @@ class NotificacionServiceTest {
                 motor.setTemplateResolver(resolver);
                 servicio = new NotificacionService(recordatorios, registros, citas, enviador,
                                 new PlantillasCorreo(motor),
-                                RELOJ, transacciones, push);
+                                RELOJ, transacciones, push, bandeja);
                 when(enviador.activo()).thenReturn(true);
         }
 
@@ -490,4 +492,48 @@ class NotificacionServiceTest {
                 verify(enviador, never()).enviar(any(), any(), any(), any());
         }
 
+
+        // ------------------------------------------------------------------ bandeja de la app
+
+        @Test
+        @DisplayName("Cada aviso de una cita también queda en la bandeja de la app, con su cita y su título")
+        void avisoQuedaEnLaBandeja() {
+                Cita c = citaConOdontologoConCorreo(EstadoCita.CONFIRMADA);
+                when(citas.conDetalle(c.getId())).thenReturn(Optional.of(c));
+
+                servicio.avisarCambioDeEstado(
+                                new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CONFIRMADA));
+
+                verify(bandeja).registrar(eq(c.getPaciente().getId()), eq("CONFIRMACION_PAGO"),
+                                eq("Tu cita en OdontoSystem"), org.mockito.ArgumentMatchers.startsWith("Tu cita está confirmada"),
+                                eq(c.getId()));
+                verify(bandeja).registrar(eq(c.getOdontologo().getUsuario().getId()), eq("CONFIRMACION_PAGO"),
+                                eq("Nueva cita reservada"), org.mockito.ArgumentMatchers.startsWith("Nueva cita · "),
+                                eq(c.getId()));
+        }
+
+        @Test
+        @DisplayName("Un strike va a la bandeja sin cita asociada")
+        void strikeEnLaBandeja() {
+                StrikeSumado evento = strike(1, null);
+
+                servicio.avisarStrike(evento);
+
+                verify(bandeja).registrar(eq(evento.pacienteId()), eq("ALERTA_STRIKE"), eq("Strike en tu cuenta"),
+                                anyString(), isNull());
+        }
+
+        @Test
+        @DisplayName("Si la bandeja falla, el correo y el push salen igual")
+        void bandejaQueFallaNoRompeElAviso() {
+                Cita c = cita(EstadoCita.CONFIRMADA, AHORA.plusDays(1));
+                when(citas.conDetalle(c.getId())).thenReturn(Optional.of(c));
+                doThrow(new RuntimeException("BD caída")).when(bandeja).registrar(any(), any(), any(), any(), any());
+
+                servicio.avisarCambioDeEstado(
+                                new CitaCambioEstado(c.getId(), EstadoCita.PENDIENTE_PAGO, EstadoCita.CONFIRMADA));
+
+                verify(enviador).enviar(eq("lucia@correo.pe"), any(), any(), any());
+                verify(push).enviarAUsuario(eq(c.getPaciente().getId()), anyString(), anyString(), any());
+        }
 }
