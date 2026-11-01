@@ -26,6 +26,11 @@ public class IntentDetector {
     /** Peso de cada frase clave. Una frase de 2+ palabras es más específica que una palabra suelta. */
     private record FraseClave(String frase, int peso) {}
 
+    /**
+     * Una pregunta de precio ("cuánto cuesta…") manda aunque nombre tratamientos: "¿cuánto cuesta un implante de
+     * dientes?" suma 4 para la búsqueda (implante + dientes) y debe seguir siendo una consulta de precio.
+     */
+    private static FraseClave decisiva(String frase) { return new FraseClave(frase, 6); }
     private static FraseClave fuerte(String frase) { return new FraseClave(frase, 3); }
     private static FraseClave media(String frase)  { return new FraseClave(frase, 2); }
     private static FraseClave debil(String frase)  { return new FraseClave(frase, 1); }
@@ -39,6 +44,13 @@ public class IntentDetector {
                 fuerte("citas anteriores"), fuerte("citas pendientes"), fuerte("cuando es mi"),
                 fuerte("tengo cita"), fuerte("tengo una cita"), fuerte("citas agendadas"),
                 media("historial"), media("recordatorio"), media("recordar")
+        ));
+        REGLAS.put(Intencion.CONSULTAR_PRECIO, List.of(
+                decisiva("cuanto cuesta"), decisiva("cuanto cuestan"), decisiva("cuanto cobra"),
+                decisiva("cuanto cobran"), decisiva("cuanto sale"), decisiva("cuanto vale"),
+                decisiva("que precio"), decisiva("cual es el precio"), decisiva("lista de precios"),
+                fuerte("cuanto es la"), fuerte("cuanto es el"),
+                media("precio"), media("precios"), media("costo"), media("costos"), media("tarifa"), media("tarifas")
         ));
         REGLAS.put(Intencion.AGENDAR_CITA, List.of(
                 fuerte("ver disponibilidad"), fuerte("agendar con"), fuerte("reservar con"),
@@ -72,6 +84,7 @@ public class IntentDetector {
     /** En empate gana la intención que aparece primero (la más concreta). */
     private static final List<Intencion> PRIORIDAD_DESEMPATE = List.of(
             Intencion.CONSULTAR_HISTORIAL,
+            Intencion.CONSULTAR_PRECIO,
             Intencion.AGENDAR_CITA,
             Intencion.BUSCAR_ODONTOLOGO,
             Intencion.SALUDO

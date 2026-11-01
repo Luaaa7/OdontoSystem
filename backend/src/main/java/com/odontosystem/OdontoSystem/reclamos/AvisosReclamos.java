@@ -2,6 +2,7 @@ package com.odontosystem.OdontoSystem.reclamos;
 
 import com.odontosystem.OdontoSystem.entity.Reclamo;
 import com.odontosystem.OdontoSystem.entity.Usuario;
+import com.odontosystem.OdontoSystem.notificaciones.BandejaNotificaciones;
 import com.odontosystem.OdontoSystem.notificaciones.EnviadorCorreo;
 import com.odontosystem.OdontoSystem.notificaciones.PlantillasCorreo;
 import com.odontosystem.OdontoSystem.reclamos.ReclamoDtos.ReclamoResponse;
@@ -32,11 +33,14 @@ public class AvisosReclamos {
     private final ReclamoRepository reclamos;
     private final EnviadorCorreo enviador;
     private final PlantillasCorreo plantillas;
+    private final BandejaNotificaciones bandeja;
 
-    public AvisosReclamos(ReclamoRepository reclamos, EnviadorCorreo enviador, PlantillasCorreo plantillas) {
+    public AvisosReclamos(ReclamoRepository reclamos, EnviadorCorreo enviador, PlantillasCorreo plantillas,
+                          BandejaNotificaciones bandeja) {
         this.reclamos = reclamos;
         this.enviador = enviador;
         this.plantillas = plantillas;
+        this.bandeja = bandeja;
     }
 
     @Async
@@ -82,6 +86,8 @@ public class AvisosReclamos {
         v.put("odontologo", d.odontologo());
         v.put("responderAntes", FECHA.format(d.responderAntes()));
         enviador.enviar(para.getCorreo(), nombre, asunto, plantillas.armar("reclamo", v));
+        bandeja.registrar(para.getId(), "RECLAMO", "respondido".equals(caso) ? "Respuesta a tu reclamo" : "Libro de reclamaciones",
+                asunto, d.citaId());
     }
 
     private static String etiqueta(ReclamoResponse d) {

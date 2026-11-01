@@ -26,6 +26,13 @@ public class ConsentimientoService {
 
     public record PoliticaResponse(String version) {}
 
+    /**
+     * Si el usuario ya aceptó la versión vigente. Cuando la política cambia de versión, aceptada pasa a false
+     * y el frontend debe pedirle que acepte la nueva (POST /api/usuarios/yo/consentimientos).
+     */
+    public record EstadoConsentimiento(String versionVigente, boolean aceptada, String ultimaVersionAceptada,
+                                       OffsetDateTime ultimaAceptacionEn) {}
+
     private final EntityManager entityManager;
     private final String versionVigente;
 
@@ -59,6 +66,27 @@ public class ConsentimientoService {
                 .setParameter("usuario", usuarioId)
                 .getResultList();
         return filas.stream().map(f -> new ConsentimientoResponse((String) f[0], aFecha(f[1]))).toList();
+    }
+
+    /** ¿Aceptó la versión vigente? Y cuál fue la última que aceptó. */
+    @Transactional(readOnly = true)
+    public EstadoConsentimiento estado(UUID usuarioId) {
+        return estadoDe(versionVigente, deUsuario(usuarioId));
+    }
+
+    /** Registra la aceptación de la versión vigente (si ya estaba, no duplica) y devuelve el estado. */
+    @Transactional
+    public EstadoConsentimiento aceptar(UUID usuarioId, String ip) {
+        registrar(usuarioId, ip);
+        return estado(usuarioId);
+    }
+
+    /** @param aceptados del más reciente al más antiguo, como los devuelve {@link #deUsuario} */
+    static EstadoConsentimiento estadoDe(String vigente, List<ConsentimientoResponse> aceptados) {
+        boolean aceptada = aceptados.stream().anyMatch(c -> vigente.equals(c.versionPolitica()));
+        ConsentimientoResponse ultimo = aceptados.isEmpty() ? null : aceptados.get(0);
+        return new EstadoConsentimiento(vigente, aceptada,
+                ultimo == null ? null : ultimo.versionPolitica(), ultimo == null ? null : ultimo.aceptadoEn());
     }
 
     static String ipValida(String ip) {

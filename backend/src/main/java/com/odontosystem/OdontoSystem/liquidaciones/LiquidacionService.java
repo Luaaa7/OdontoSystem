@@ -1,5 +1,6 @@
 package com.odontosystem.OdontoSystem.liquidaciones;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.odontosystem.OdontoSystem.citas.ParametrosSistema;
 import com.odontosystem.OdontoSystem.entity.Cita;
 import com.odontosystem.OdontoSystem.entity.EstadoApelacion;
@@ -57,7 +58,12 @@ public class LiquidacionService {
                                       String retenidaPor, OffsetDateTime pagarDesde, String referenciaPago,
                                       OffsetDateTime liquidadoEn) {}
 
-    public record MisIngresos(BigDecimal enCustodia, BigDecimal pagado, BigDecimal devueltoAPacientes,
+    /**
+     * devueltoAPacientes lleva el nombre JSON explícito: la estrategia snake_case de Jackson lo convertía en
+     * "devuelto_apacientes" (una sola letra "A") y la web lee "devuelto_a_pacientes".
+     */
+    public record MisIngresos(BigDecimal enCustodia, BigDecimal pagado,
+                              @JsonProperty("devuelto_a_pacientes") BigDecimal devueltoAPacientes,
                               List<LiquidacionResponse> liquidaciones) {}
 
     public record ResultadoProceso(int registradas, int pagadas, int canceladas) {}

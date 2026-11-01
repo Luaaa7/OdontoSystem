@@ -87,4 +87,44 @@ class ConsentimientoServiceTest {
         assertThat(r.get(0).aceptadoEn().toInstant()).isEqualTo(cuando);
         assertThat(r.get(1).aceptadoEn().toInstant()).isEqualTo(cuando);
     }
+
+    @Test
+    @DisplayName("Estado: si la última aceptada es una versión vieja, pide aceptar la vigente")
+    void estadoConVersionVieja() {
+        Instant cuando = Instant.parse("2026-09-21T08:05:00Z");
+        ConsentimientoService.EstadoConsentimiento e = ConsentimientoService.estadoDe("2026-10-v1", List.of(
+                new ConsentimientoService.ConsentimientoResponse("2026-09-v2", cuando.atOffset(java.time.ZoneOffset.UTC)),
+                new ConsentimientoService.ConsentimientoResponse("2026-05-v1", cuando.atOffset(java.time.ZoneOffset.UTC))));
+
+        assertThat(e.aceptada()).isFalse();
+        assertThat(e.versionVigente()).isEqualTo("2026-10-v1");
+        assertThat(e.ultimaVersionAceptada()).isEqualTo("2026-09-v2");
+    }
+
+    @Test
+    @DisplayName("Estado: con la vigente aceptada (o sin ninguna) responde según corresponda")
+    void estadoAceptadoYVacio() {
+        assertThat(ConsentimientoService.estadoDe("2026-10-v1", List.of(
+                new ConsentimientoService.ConsentimientoResponse("2026-10-v1", null))).aceptada()).isTrue();
+        ConsentimientoService.EstadoConsentimiento vacio = ConsentimientoService.estadoDe("2026-10-v1", List.of());
+        assertThat(vacio.aceptada()).isFalse();
+        assertThat(vacio.ultimaVersionAceptada()).isNull();
+    }
+
+    @Test
+    @DisplayName("Aceptar guarda la versión vigente y devuelve el estado actualizado")
+    void aceptar() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class, RETURNS_SELF);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{"2026-10-v1", Timestamp.from(Instant.parse("2026-11-01T17:00:00Z"))}));
+
+        ConsentimientoService.EstadoConsentimiento e =
+                new ConsentimientoService(em, "2026-10-v1").aceptar(UUID.randomUUID(), "190.12.34.56");
+
+        verify(query).executeUpdate();
+        verify(query).setParameter("version", "2026-10-v1");
+        assertThat(e.aceptada()).isTrue();
+    }
 }

@@ -71,4 +71,14 @@ public interface CitaRepository extends JpaRepository<Cita, UUID> {
     List<Cita> terminadasSinReporte(@Param("estado") EstadoCita estado, @Param("limite") OffsetDateTime limite);
 
     List<Cita> findByEstadoAndCreadoEnBefore(EstadoCita estado, OffsetDateTime limite);
+
+    /** Todas las citas de un odontólogo con su paciente (lista "Mis pacientes"). */
+    @Query("select c from Cita c join fetch c.paciente where c.odontologo.usuarioId = :odontologoId")
+    List<Cita> todasDelOdontologo(@Param("odontologoId") UUID odontologoId);
+
+    /** Las citas entre un odontólogo y un paciente (vacía si nunca tuvieron una). */
+    @Query("select c from Cita c join fetch c.paciente where c.odontologo.usuarioId = :odontologoId "
+            + "and c.paciente.id = :pacienteId")
+    List<Cita> delPacienteConOdontologo(@Param("odontologoId") UUID odontologoId,
+                                        @Param("pacienteId") UUID pacienteId);
 }

@@ -91,6 +91,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/citas/*/historia").hasRole("ODONTOLOGO")
                         .requestMatchers(HttpMethod.GET, "/api/historias/mias").hasRole("PACIENTE")
                         .requestMatchers(HttpMethod.GET, "/api/usuarios/yo/reputacion").hasRole("PACIENTE")
+                        // Detalle de un paciente: solo un odontólogo que lo atendió (el servicio verifica la cita)
+                        .requestMatchers(HttpMethod.GET, "/api/pacientes/*").hasRole("ODONTOLOGO")
                         // Railway consulta este endpoint para saber si la app está viva
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated()
