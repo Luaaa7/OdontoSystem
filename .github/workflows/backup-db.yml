@@ -1,0 +1,173 @@
+# Respaldo semanal de la base de datos de producción (Supabase, plan Free: no trae backups automáticos).
+#
+# Qué hace:
+#   1. Saca una copia COMPLETA del esquema public (estructura + datos + historial de Flyway) con pg_dump 17.
+#   2. Comprueba que la copia se puede leer (pg_restore --list) y cuenta las filas de cada tabla.
+#   3. La cifra con AES-256 (tiene datos personales de pacientes) y la guarda como artefacto 30 días.
+#   4. Escribe un resumen con fecha, tamaño y filas por tabla en la página de la ejecución.
+#
+# Secretos necesarios (Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL    postgresql://postgres.<ref>:<contraseña>@aws-0-sa-east-1.pooler.supabase.com:5432/postgres?sslmode=require
+#   BACKUP_PASSPHRASE  clave larga para cifrar; sin ella el respaldo no se puede abrir. Guárdala fuera de GitHub.
+#
+# Cómo restaurar: docs/respaldos.md
+name: Respaldo de la base de datos
+
+on:
+  schedule:
+    - cron: "17 8 * * 0" # domingos 03:17 en Lima (08:17 UTC)
+  workflow_dispatch: # botón "Run workflow" para sacar uno a mano
+
+concurrency:
+  group: respaldo-bd
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  respaldo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PGBIN: /usr/lib/postgresql/17/bin
+    steps:
+      - name: Verificar que los secretos existen
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          faltan=""
+          [ -z "$SUPABASE_DB_URL" ] && faltan="$faltan SUPABASE_DB_URL"
+          [ -z "$BACKUP_PASSPHRASE" ] && faltan="$faltan BACKUP_PASSPHRASE"
+          if [ -n "$faltan" ]; then
+            echo "::error::Faltan los secretos:$faltan (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+          if [ ${#BACKUP_PASSPHRASE} -lt 20 ]; then
+            echo "::error::BACKUP_PASSPHRASE debe tener al menos 20 caracteres"
+            exit 1
+          fi
+
+      - name: Instalar el cliente de PostgreSQL 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          "$PGBIN/pg_dump" --version
+
+      - name: Sacar la copia
+        id: copia
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          fecha=$(TZ=America/Lima date +%Y-%m-%d_%H%M)
+          nombre="odontosystem_${fecha}"
+          mkdir -p respaldo
+          # Formato "custom" (-Fc): comprimido y permite restaurar tablas sueltas con pg_restore.
+          "$PGBIN/pg_dump" "$SUPABASE_DB_URL" \
+            --format=custom --compress=9 \
+            --schema=public --no-owner --no-privileges \
+            --file="respaldo/${nombre}.dump"
+          echo "nombre=${nombre}" >> "$GITHUB_OUTPUT"
+          echo "fecha=$(TZ=America/Lima date '+%d/%m/%Y %H:%M') (Lima)" >> "$GITHUB_OUTPUT"
+
+      - name: Comprobar la copia y contar filas
+        id: control
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          NOMBRE: ${{ steps.copia.outputs.nombre }}
+        run: |
+          archivo="respaldo/${NOMBRE}.dump"
+          # Si el archivo está dañado, pg_restore --list falla y el job se marca en rojo.
+          "$PGBIN/pg_restore" --list "$archivo" > respaldo/contenido.txt
+          tablas=$(grep -c " TABLE DATA public " respaldo/contenido.txt || true)
+          if [ "${tablas:-0}" -lt 10 ]; then
+            echo "::error::La copia solo tiene ${tablas:-0} tablas con datos; algo salió mal"
+            exit 1
+          fi
+          version=$("$PGBIN/psql" "$SUPABASE_DB_URL" -At -c \
+            "select version from public.flyway_schema_history where success and version is not null
+                order by installed_rank desc limit 1")
+          "$PGBIN/psql" "$SUPABASE_DB_URL" -At -F '|' -c "
+            select t.table_name,
+                   (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', t.table_name),
+                                                        false, true, '')))[1]::text
+            from information_schema.tables t
+            where t.table_schema = 'public' and t.table_type = 'BASE TABLE'
+            order by t.table_name" > respaldo/filas.txt
+          echo "tablas=${tablas}" >> "$GITHUB_OUTPUT"
+          echo "version=V${version}" >> "$GITHUB_OUTPUT"
+          echo "tamano=$(du -h "$archivo" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cifrar (AES-256)
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          NOMBRE: ${{ steps.copia.outputs.nombre }}
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 \
+            --output "respaldo/${NOMBRE}.dump.gpg" "respaldo/${NOMBRE}.dump" <<< "$BACKUP_PASSPHRASE"
+          sha256sum "respaldo/${NOMBRE}.dump.gpg" | cut -d' ' -f1 > "respaldo/${NOMBRE}.sha256"
+          # Solo se sube la versión cifrada
+          rm -f "respaldo/${NOMBRE}.dump" respaldo/contenido.txt
+
+      - name: Guardar el respaldo (30 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.copia.outputs.nombre }}
+          path: |
+            respaldo/${{ steps.copia.outputs.nombre }}.dump.gpg
+            respaldo/${{ steps.copia.outputs.nombre }}.sha256
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Resumen
+        if: always()
+        env:
+          NOMBRE: ${{ steps.copia.outputs.nombre }}
+          FECHA: ${{ steps.copia.outputs.fecha }}
+          TAMANO: ${{ steps.control.outputs.tamano }}
+          TABLAS: ${{ steps.control.outputs.tablas }}
+          VERSION: ${{ steps.control.outputs.version }}
+          ESTADO: ${{ job.status }}
+          GUIA: ${{ github.server_url }}/${{ github.repository }}/blob/main/docs/respaldos.md
+        run: |
+          {
+            if [ "$ESTADO" = "success" ]; then
+              echo "## ✅ Respaldo de la base de datos"
+            else
+              echo "## ❌ El respaldo falló"
+              echo
+              echo "Revisa el paso en rojo. Causas comunes: el proyecto de Supabase está pausado,"
+              echo "cambió la contraseña de la base (actualiza SUPABASE_DB_URL) o falta un secreto."
+              echo
+            fi
+            if [ -n "$NOMBRE" ]; then
+              echo
+              echo "| Dato | Valor |"
+              echo "|---|---|"
+              echo "| Archivo | \`${NOMBRE}.dump.gpg\` |"
+              echo "| Fecha | ${FECHA} |"
+              echo "| Tamaño (antes de cifrar) | ${TAMANO:-—} |"
+              echo "| Tablas con datos | ${TABLAS:-—} |"
+              echo "| Migración de Flyway | ${VERSION:-—} |"
+              echo "| Se borra el | $(TZ=America/Lima date -d '+30 days' +%d/%m/%Y) |"
+            fi
+            if [ -s respaldo/filas.txt ]; then
+              echo
+              echo "<details><summary>Filas por tabla</summary>"
+              echo
+              echo "| Tabla | Filas |"
+              echo "|---|---:|"
+              while IFS='|' read -r tabla filas; do echo "| ${tabla} | ${filas} |"; done < respaldo/filas.txt
+              echo
+              echo "</details>"
+            fi
+            echo
+            echo "Cómo restaurarlo: [docs/respaldos.md](${GUIA})"
+          } >> "$GITHUB_STEP_SUMMARY"
