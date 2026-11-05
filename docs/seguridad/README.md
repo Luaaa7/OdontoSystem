@@ -59,6 +59,19 @@ Cabeceras de seguridad ya aplicadas en el backend (`SecurityConfig`): `X-Content
 
 Formato del reporte (se llena con los resultados de ZAP):
 
+### Resultado 1: web en Vercel (ZAP 2.17.0, Spider + escaneo pasivo, 05/11/2026)
+
+61 URL recorridas. **0 altas, 4 medias, 1 baja, 4 informativas.** Reporte completo: [`evidencias/zap-web-antes.html`](evidencias/zap-web-antes.html).
+
 | Hallazgo | Gravedad | Acción de mitigación |
 |---|---|---|
-| | | |
+| Cabecera Content Security Policy (CSP) no configurada | Media | `src/server.ts` de la web agrega una CSP que solo permite la API de Railway, Google (fuentes e inicio de sesión), Mercado Pago, Culqi y los mapas de OpenStreetMap. |
+| Falta de cabecera anti-clickjacking | Media | `X-Frame-Options: DENY` y `frame-ancestors 'none'` en la CSP: nadie puede incrustar la web en un iframe. |
+| Configuración incorrecta cross-domain (`Access-Control-Allow-Origin: *` en archivos `/assets/*.js`) | Media | Riesgo aceptado: son los archivos JavaScript públicos de la web, que no contienen datos ni requieren sesión. La API sí restringe CORS a los dominios de la web (`CORS_ALLOWED_ORIGINS`). |
+| Sub Resource Integrity ausente (hoja de estilos de Google Fonts) | Media | Riesgo aceptado con control compensatorio: Google genera ese CSS distinto según el navegador, así que no admite un hash fijo; la CSP limita los estilos a `fonts.googleapis.com`. Mejora futura: alojar las fuentes en la propia web. |
+| Falta encabezado X-Content-Type-Options | Baja | `nosniff` en `src/server.ts` (páginas) y en `vercel.json` (archivos de `/assets`). |
+| Comentarios sospechosos en el JavaScript (`user`, `select`, `from`) | Informativa | Falso positivo: son palabras del código minificado (por ejemplo, el campo "user" de la sesión), no consultas SQL ni datos sensibles. |
+| Recuperado de la caché / directivas de caché | Informativa | Esperado: Vercel guarda en caché los archivos estáticos para que la web cargue rápido. |
+| Aplicación web moderna | Informativa | Solo informa que la web es una SPA de React. |
+
+Después de desplegar la corrección se repite el escaneo y se guarda `evidencias/zap-web-despues.html`.
