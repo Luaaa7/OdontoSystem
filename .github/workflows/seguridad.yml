@@ -1,0 +1,142 @@
+# Pruebas de seguridad automáticas (consigna de seguridad, OWASP):
+#   1. SCA del backend: OWASP Dependency-Check revisa las librerías de Maven contra la base de CVE (A06).
+#   2. Control de acceso: la matriz de roles (A01) y las cabeceras de seguridad (MatrizControlAccesoTest).
+#   3. DAST pasivo: OWASP ZAP Baseline sobre la web publicada (solo observa, no ataca ni crea datos).
+# Corre en cada PR a main, cada lunes y a mano (Actions → Seguridad → Run workflow).
+# Secreto opcional: NVD_API_KEY (gratis en https://nvd.nist.gov/developers/request-an-api-key);
+# sin él funciona igual, pero la primera descarga de la base tarda mucho más.
+name: Seguridad
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/seguridad.yml"
+  schedule:
+    - cron: "23 11 * * 1" # lunes 06:23 en Lima
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependencias:
+    name: SCA - librerías del backend (OWASP Dependency-Check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # La base de vulnerabilidades pesa ~300 MB: se guarda entre ejecuciones
+      - name: Recordar la base de vulnerabilidades (NVD)
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: nvd-${{ github.run_id }}
+          restore-keys: nvd-
+
+      - name: Analizar las librerías
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -q dependency-check:check
+
+      - name: Resumen de vulnerabilidades
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os
+          ruta = "target/dependency-check-report.json"
+          if not os.path.exists(ruta):
+              print("## SCA: no se generó el reporte"); raise SystemExit
+          datos = json.load(open(ruta))
+          filas, conteo = [], {}
+          for dep in datos.get("dependencies", []):
+              for v in dep.get("vulnerabilities", []) or []:
+                  sev = (v.get("severity") or "DESCONOCIDA").upper()
+                  conteo[sev] = conteo.get(sev, 0) + 1
+                  filas.append((sev, dep.get("fileName", "?"), v.get("name", "?")))
+          print("## SCA del backend (OWASP Dependency-Check)\n")
+          print("| Gravedad | Cantidad |\n|---|---:|")
+          for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "DESCONOCIDA"):
+              if sev in conteo:
+                  print(f"| {sev} | {conteo[sev]} |")
+          if not filas:
+              print("| Ninguna | 0 |")
+          print("\n<details><summary>Detalle por librería</summary>\n\n| Gravedad | Librería | CVE |\n|---|---|---|")
+          orden = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+          for sev, lib, cve in sorted(filas, key=lambda f: orden.get(f[0], 9)):
+              print(f"| {sev} | {lib} | {cve} |")
+          print("\n</details>")
+          PY
+
+      - name: Guardar el reporte
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: sca-dependency-check
+          path: |
+            backend/target/dependency-check-report.html
+            backend/target/dependency-check-report.json
+          if-no-files-found: ignore
+
+  control-acceso:
+    name: A01 - matriz de control de acceso y cabeceras
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Probar la matriz de roles
+        run: |
+          chmod +x mvnw
+          ./mvnw -B -q test -Dtest=MatrizControlAccesoTest -Djacoco.skip=true
+
+      - name: Publicar la matriz
+        if: always()
+        run: |
+          {
+            echo "## Matriz de control de acceso (OWASP A01)"
+            echo
+            cat target/seguridad/matriz-control-acceso.md 2>/dev/null || echo "No se generó la matriz."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar la matriz
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: matriz-control-acceso
+          path: backend/target/seguridad/
+          if-no-files-found: ignore
+
+  zap-web:
+    name: DAST pasivo - OWASP ZAP Baseline sobre la web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Escanear la web publicada (solo observa)
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: "https://frontend-odonto-system.vercel.app"
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-baseline-web

@@ -265,6 +265,31 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- SCA (OWASP A06): revisa las librerías contra la base de vulnerabilidades conocidas (NVD/CVE).
+                 No corre en el build normal; se llama a mano o desde GitHub Actions (seguridad.yml):
+                   ./mvnw dependency-check:check
+                 Reporte en target/dependency-check-report.html. Con la variable NVD_API_KEY descarga la base mucho más rápido. -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>12.1.0</version>
+                <configuration>
+                    <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                    </formats>
+                    <!-- Solo las librerías que viajan con la app (no las de pruebas) -->
+                    <skipTestScope>true</skipTestScope>
+                    <!-- Reporta sin romper el build; la decisión se toma al revisar el reporte -->
+                    <failBuildOnCVSS>11</failBuildOnCVSS>
+                    <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+                    <nodeAnalyzerEnabled>false</nodeAnalyzerEnabled>
+                    <nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>
+                    <retireJsAnalyzerEnabled>false</retireJsAnalyzerEnabled>
+                    <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
