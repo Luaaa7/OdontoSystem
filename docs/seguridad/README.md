@@ -51,9 +51,9 @@ Además, cada servicio filtra por dueño: un paciente que pide la cita, la histo
 | Escaneo | Dónde | Tipo | Cómo |
 |---|---|---|---|
 | Baseline de la web | Vercel (producción) | Pasivo: solo observa las respuestas | Job *ZAP* del workflow; reporte en el artefacto `zap-baseline-web` |
-| Escaneo de la API | Backend en **localhost** | Activo (ataca) | ZAP Desktop → *Import* → *OpenAPI* desde `http://localhost:8080/v3/api-docs` → *Active Scan* |
+| Escaneo de la API | Railway (producción) | Activo, solo inyección (SQLi y XSS) | ZAP Desktop → *Importar* 12 URL de la API → política `Inyeccion` → *Escaneo activo* sobre la búsqueda `GET /api/odontologos?q=` |
 
-El escaneo activo se hace solo en local: contra producción crearía datos basura.
+El escaneo activo contra producción se limitó a una ruta de **solo lectura** (la búsqueda pública de odontólogos) y a tres reglas: inyección SQL, inyección SQL de PostgreSQL basada en tiempo y XSS reflejado. No se atacaron formularios, registro ni pagos, para no crear datos basura en la base real.
 
 Cabeceras de seguridad ya aplicadas en el backend (`SecurityConfig`): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Content-Security-Policy`, `Referrer-Policy: no-referrer`, `Permissions-Policy` y HSTS. La API no usa cookies (el token va en la cabecera `Authorization`), así que la alerta "Cookie sin atributo Secure" no aplica.
 
@@ -75,3 +75,15 @@ Formato del reporte (se llena con los resultados de ZAP):
 | Aplicación web moderna | Informativa | Solo informa que la web es una SPA de React. |
 
 Después de desplegar la corrección se repite el escaneo y se guarda `evidencias/zap-web-despues.html`.
+
+### Resultado 2: API en Railway (ZAP 2.17.0, escaneo activo de inyección, 05/11/2026)
+
+Ruta atacada: `GET https://odontosystem-production.up.railway.app/api/odontologos?q=torres`. Política `Inyeccion` (umbral Medio, 2 hilos, sin recursión). **40 peticiones de ataque, 0 alertas nuevas.** Reporte completo: [`evidencias/zap-api-inyeccion.html`](evidencias/zap-api-inyeccion.html) (incluye también las alertas pasivas de la web del Resultado 1, porque ambas pruebas se hicieron en la misma sesión de ZAP).
+
+| Hallazgo | Gravedad | Acción de mitigación |
+|---|---|---|
+| Inyección SQL en el parámetro `q` | No encontrada | Control existente: `BusquedaOdontologosService` no manda `q` a la base de datos; lo normaliza y lo compara en memoria contra los perfiles ya cargados. El resto de consultas usa Spring Data JPA con parámetros enlazados (`:parametro`), nunca texto concatenado. |
+| Inyección SQL ciega por tiempo (PostgreSQL) | No encontrada | Mismo control: como `q` no llega al SQL, un `pg_sleep` inyectado no se ejecuta y los tiempos de respuesta no cambiaron. |
+| XSS reflejado en el parámetro `q` | No encontrada | La API responde JSON (`Content-Type: application/json`) con `X-Content-Type-Options: nosniff`, así que el navegador no interpreta la respuesta como HTML. |
+
+Ninguna alerta de la API apareció en el reporte: los 4 hallazgos medios y el bajo corresponden solo a la web de Vercel.
