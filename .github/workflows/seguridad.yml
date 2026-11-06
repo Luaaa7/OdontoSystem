@@ -20,11 +20,16 @@ on:
 permissions:
   contents: read
 
+# Si llega un commit nuevo al PR, se cancela la revisión anterior (ya no sirve)
+concurrency:
+  group: seguridad-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dependencias:
     name: SCA - librerías del backend (OWASP Dependency-Check)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     defaults:
       run:
         working-directory: backend
@@ -38,8 +43,8 @@ jobs:
           cache: maven
 
       # La base de vulnerabilidades pesa ~300 MB: se guarda entre ejecuciones
-      - name: Recordar la base de vulnerabilidades (NVD)
-        uses: actions/cache@v4
+      - name: Recuperar la base de vulnerabilidades (NVD)
+        uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
           key: nvd-${{ github.run_id }}
@@ -51,6 +56,14 @@ jobs:
         run: |
           chmod +x mvnw
           ./mvnw -B -q dependency-check:check
+
+      # Se guarda aunque el análisis falle: así la siguiente ejecución no descarga todo otra vez
+      - name: Guardar la base de vulnerabilidades (NVD)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: nvd-${{ github.run_id }}
 
       - name: Resumen de vulnerabilidades
         if: always()
@@ -90,6 +103,34 @@ jobs:
             backend/target/dependency-check-report.html
             backend/target/dependency-check-report.json
           if-no-files-found: ignore
+
+  osv:
+    name: SCA - librerías del backend (OSV-Scanner, respaldo rápido)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      # Consulta la base OSV de Google (incluye los avisos de GitHub y del NVD) sin descargarla entera
+      - name: Analizar las librerías con OSV-Scanner
+        run: |
+          curl -sSfL -o osv-scanner https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_linux_amd64
+          chmod +x osv-scanner
+          mkdir -p reporte-osv
+          ./osv-scanner scan source --format json --output reporte-osv/osv.json backend/pom.xml || true
+          ./osv-scanner scan source --format markdown --output reporte-osv/osv.md backend/pom.xml || true
+          {
+            echo "## SCA del backend con OSV-Scanner"
+            echo
+            if [ -s reporte-osv/osv.md ]; then cat reporte-osv/osv.md; else echo "Sin vulnerabilidades conocidas en las librerías del backend."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar el reporte
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: sca-osv-scanner
+          path: reporte-osv/
 
   control-acceso:
     name: A01 - matriz de control de acceso y cabeceras

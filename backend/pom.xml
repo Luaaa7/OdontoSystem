@@ -288,6 +288,9 @@
                     <nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>
                     <retireJsAnalyzerEnabled>false</retireJsAnalyzerEnabled>
                     <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+                    <!-- El NVD a veces responde 5xx por carga: reintentar más y espaciar las peticiones -->
+                    <nvdMaxRetryCount>20</nvdMaxRetryCount>
+                    <nvdApiDelay>6000</nvdApiDelay>
                 </configuration>
             </plugin>
             <plugin>
