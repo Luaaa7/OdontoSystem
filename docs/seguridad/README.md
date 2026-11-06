@@ -6,7 +6,8 @@ Responde a la consigna de la fase de pruebas de seguridad: SAST/SCA, matriz de c
 
 | Parte | Herramienta | Cómo se corre | Evidencia |
 |---|---|---|---|
-| Backend (Java/Maven) | OWASP Dependency-Check 12.1.0 (plugin de Maven) | `cd backend && ./mvnw dependency-check:check` o el job *SCA* del workflow | `backend/target/dependency-check-report.html` y el resumen del job |
+| Backend (Java/Maven) | OSV-Scanner v2.6.0 (Google; base OSV que reúne GitHub Advisories y NVD) | Job *SCA - OSV-Scanner* del workflow | [`evidencias/osv-backend-antes.md`](evidencias/osv-backend-antes.md) y el resumen del job |
+| Backend (respaldo) | OWASP Dependency-Check 12.1.0 (plugin de Maven) | `cd backend && ./mvnw dependency-check:check` o el job *SCA - Dependency-Check* | Depende de la API del NVD, que el 05/11/2026 respondió 522/524 (caída); no bloquea el PR |
 | Web (React) | `npm audit` | `npm audit --omit=dev` en el repo de la web | [`evidencias/npm-audit-web-antes.txt`](evidencias/npm-audit-web-antes.txt) |
 | App (Capacitor) | `npm audit` | `npm audit --omit=dev` en el repo de la app | [`evidencias/npm-audit-app-antes.txt`](evidencias/npm-audit-app-antes.txt) |
 
@@ -16,8 +17,9 @@ Resultado inicial del 05/11/2026 (solo librerías que llegan a producción, `--o
 |---|---:|---:|---:|---:|---|---|
 | Web | 1 | 5 | 0 | 7 | `dompurify` (crítica) y versiones viejas de `vite`, `zod`, `undici`, `seroval` | `npm audit fix` y volver a probar la web |
 | App | 0 | 9 | 8 | 1 | El CLI `shadcn` está en `dependencies` y arrastra librerías de servidor (`@modelcontextprotocol/sdk`, `body-parser`, `systeminformation`) | Mover `shadcn` a `devDependencies` (es un generador de componentes, no se usa en la app) y `npm audit fix` |
+| Backend | 8 | 16 | 16 | 0 | 15 librerías: Tomcat embebido 11.0.22 (4 críticas), Spring WebMVC 7.0.8 (2 críticas), Netty 4.2.15 (1 crítica), Jackson 2 y 3, PostgreSQL, HttpClient5, Log4j, Guava 33.4.8 y jsoup 1.17.2 | Subir Spring Boot de 4.1.0 a **4.1.2** (trae Tomcat 11.0.27, Spring 7.0.10, Jackson 2.21.7/3.1.7, Netty 4.2.19, PostgreSQL 42.7.14, HttpClient5 5.6.5, HttpCore5 5.4.4, Log4j 2.25.5), Guava a **33.7.2-jre** y jsoup a **1.23.2** |
 
-Después de corregir se guardan `npm-audit-web-despues.txt` y `npm-audit-app-despues.txt` como evidencia.
+Después de corregir se guardan `npm-audit-web-despues.txt`, `npm-audit-app-despues.txt` y el nuevo resultado de OSV-Scanner del backend (`osv-backend-despues.md`) como evidencia.
 
 ## 2. Matriz de control de acceso (A01: Broken Access Control)
 
@@ -70,9 +72,12 @@ Formato del reporte (se llena con los resultados de ZAP):
 | Configuración incorrecta cross-domain (`Access-Control-Allow-Origin: *` en archivos `/assets/*.js`) | Media | Riesgo aceptado: son los archivos JavaScript públicos de la web, que no contienen datos ni requieren sesión. La API sí restringe CORS a los dominios de la web (`CORS_ALLOWED_ORIGINS`). |
 | Sub Resource Integrity ausente (hoja de estilos de Google Fonts) | Media | Riesgo aceptado con control compensatorio: Google genera ese CSS distinto según el navegador, así que no admite un hash fijo; la CSP limita los estilos a `fonts.googleapis.com`. Mejora futura: alojar las fuentes en la propia web. |
 | Falta encabezado X-Content-Type-Options | Baja | `nosniff` en `src/server.ts` (páginas) y en `vercel.json` (archivos de `/assets`). |
+| Cross-Origin-Embedder-Policy ausente (solo lo reporta ZAP Baseline en GitHub Actions) | Baja | Riesgo aceptado: `COEP: require-corp` bloquearía el inicio de sesión con Google, el checkout de Mercado Pago/Culqi y las imágenes de Cloudinary, que no envían la cabecera `Cross-Origin-Resource-Policy`. La CSP y `frame-ancestors 'none'` ya cubren el aislamiento que importa. |
 | Comentarios sospechosos en el JavaScript (`user`, `select`, `from`) | Informativa | Falso positivo: son palabras del código minificado (por ejemplo, el campo "user" de la sesión), no consultas SQL ni datos sensibles. |
 | Recuperado de la caché / directivas de caché | Informativa | Esperado: Vercel guarda en caché los archivos estáticos para que la web cargue rápido. |
 | Aplicación web moderna | Informativa | Solo informa que la web es una SPA de React. |
+
+ZAP Baseline en GitHub Actions (Seguridad #4, mismo sitio): **FAIL 0, WARN 11, PASS 57**, mismas alertas más la de COEP. Reporte en el artefacto `zap-baseline-web`.
 
 Después de desplegar la corrección se repite el escaneo y se guarda `evidencias/zap-web-despues.html`.
 

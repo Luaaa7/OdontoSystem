@@ -9,7 +9,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.0</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -169,7 +169,7 @@
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.17.2</version>
+            <version>1.23.2</version>
         </dependency>
 
         <!-- Librerías de apoyo (Apache): utilidades de texto y exportación a Excel -->
@@ -181,7 +181,7 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>33.4.8-jre</version>
+            <version>33.7.2-jre</version>
         </dependency>
         <dependency>
             <groupId>org.apache.poi</groupId>
@@ -291,6 +291,8 @@
                     <!-- El NVD a veces responde 5xx por carga: reintentar más y espaciar las peticiones -->
                     <nvdMaxRetryCount>20</nvdMaxRetryCount>
                     <nvdApiDelay>6000</nvdApiDelay>
+                    <!-- Páginas más pequeñas: el NVD corta (522/524) las respuestas grandes -->
+                    <nvdApiResultsPerPage>500</nvdApiResultsPerPage>
                 </configuration>
             </plugin>
             <plugin>

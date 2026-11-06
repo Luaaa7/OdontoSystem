@@ -29,6 +29,8 @@ jobs:
   dependencias:
     name: SCA - librerías del backend (OWASP Dependency-Check)
     runs-on: ubuntu-latest
+    # Depende de que el servicio del NVD responda; si está caído no bloquea el PR (OSV-Scanner cubre el SCA)
+    continue-on-error: true
     timeout-minutes: 120
     defaults:
       run:
