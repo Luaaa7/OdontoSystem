@@ -121,7 +121,7 @@ Reporte: [`evidencias/zap-web-despues.html`](evidencias/zap-web-despues.html). R
 | *Nuevo:* CSP `script-src 'unsafe-inline'` (Media) | Riesgo aceptado | TanStack Start hidrata con scripts en línea. Mejora planificada: nonce por respuesta en `server.ts` |
 | *Nuevo:* CSP `style-src 'unsafe-inline'` (Media) | Riesgo aceptado | Estilos en línea de Tailwind/Radix y de Leaflet |
 | *Nuevo:* CSP con comodín en `img-src` (Media) | Riesgo aceptado | `img-src https:` cubre fotos de Cloudinary, Google y mosaicos de OpenStreetMap. Mejora: listar esos dominios |
-| COEP / COOP / CORP (Baja) | Riesgo aceptado | COOP ya se envía como `same-origin-allow-popups` (ZAP solo acepta `same-origin`, que cerraría la ventana de inicio de sesión con Google). COEP rompería Google, pagos y Cloudinary. CORP queda planificado |
+| COEP / COOP / CORP (Baja) | Riesgo aceptado | COOP ya se envía como `same-origin-allow-popups` (web, commit `d422018`; login con Google probado con paciente y odontólogo). ZAP solo acepta `same-origin`, que cerraría la ventana de inicio de sesión con Google. COEP rompería Google, pagos y Cloudinary. CORP queda planificado |
 | Permissions-Policy en `/assets/*.js` (Baja) | **Resuelto** | `vercel.json` la envía en todas las rutas |
 
 ## 4. Pruebas del plan de auditoría (backend)
