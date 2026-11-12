@@ -22,6 +22,14 @@ public interface CitaRepository extends JpaRepository<Cita, UUID> {
                         @Param("desde") OffsetDateTime desde,
                         @Param("hasta") OffsetDateTime hasta);
 
+    /** DEF-06: ¿el paciente ya tiene una cita en esos estados que se cruza con [desde, hasta)? (con cualquier odontólogo) */
+    @Query("select count(c) > 0 from Cita c where c.paciente.id = :pacienteId and c.estado in :estados "
+            + "and c.inicioProgramado < :hasta and c.finProgramado > :desde")
+    boolean pacienteTieneCitaCruzada(@Param("pacienteId") UUID pacienteId,
+                                     @Param("estados") Collection<EstadoCita> estados,
+                                     @Param("desde") OffsetDateTime desde,
+                                     @Param("hasta") OffsetDateTime hasta);
+
     @Query("select c from Cita c join fetch c.odontologo o join fetch o.usuario join fetch c.servicio "
             + "where c.paciente.id = :pacienteId order by c.inicioProgramado desc")
     List<Cita> delPaciente(@Param("pacienteId") UUID pacienteId);

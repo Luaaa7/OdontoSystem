@@ -108,6 +108,8 @@ public class ReprogramacionService {
             if (!turnoLibre) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Ese horario ya no está disponible; elige otro");
             }
+            // DEF-06: el paciente no puede quedar con dos citas a la vez (la original ya no cuenta: está REPROGRAMADA)
+            citaService.exigirPacienteLibre(pacienteId, inicio, inicio.plusMinutes(servicio.getDuracionMinutos()));
 
             // 3) La cita nueva, en el mismo estado y apuntando a la original
             Cita nueva = Cita.builder()

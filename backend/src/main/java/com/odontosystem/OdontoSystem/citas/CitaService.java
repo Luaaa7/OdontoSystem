@@ -90,6 +90,7 @@ public class CitaService {
         if (!turnoLibre) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ese horario ya no está disponible; elige otro");
         }
+        exigirPacienteLibre(pacienteId, inicio, inicio.plusMinutes(servicio.getDuracionMinutos()));
 
         String candado = BloqueoReservas.clave(perfil.getUsuarioId(), inicio);
         if (!bloqueoReservas.tomar(candado, pacienteId)) {
@@ -119,6 +120,17 @@ public class CitaService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ese horario acaba de ser reservado; elige otro");
         } finally {
             bloqueoReservas.soltar(candado);
+        }
+    }
+
+    /** Citas del paciente que lo ocupan: no puede estar en dos consultorios a la vez (DEF-06). */
+    static final List<EstadoCita> ESTADOS_QUE_OCUPAN_AL_PACIENTE =
+            List.of(EstadoCita.PENDIENTE_PAGO, EstadoCita.PENDIENTE_CONFIRMACION, EstadoCita.CONFIRMADA);
+
+    /** 409 si el paciente ya tiene otra cita (con cualquier odontólogo) que se cruza con [inicio, fin). */
+    void exigirPacienteLibre(UUID pacienteId, OffsetDateTime inicio, OffsetDateTime fin) {
+        if (citaRepository.pacienteTieneCitaCruzada(pacienteId, ESTADOS_QUE_OCUPAN_AL_PACIENTE, inicio, fin)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya tienes otra cita a esa hora; elige otro horario");
         }
     }
 
