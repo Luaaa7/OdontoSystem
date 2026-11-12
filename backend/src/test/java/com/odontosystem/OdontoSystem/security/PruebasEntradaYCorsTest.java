@@ -16,7 +16,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.filter.ForwardedHeaderFilter;
 
@@ -53,7 +53,7 @@ class PruebasEntradaYCorsTest {
         @Test
         @DisplayName("B9: registrarse con rol \"ADMIN\" → 400 (no existe ese rol) y sin detalles internos")
         void rolInexistente() throws Exception {
-            mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+            mvc.perform(post("/prueba/registro").contentType(MediaType.APPLICATION_JSON)
                             .content("{\"correo\":\"x@prueba.pe\",\"rol\":\"ADMIN\"}"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.status").value(400))
@@ -64,14 +64,14 @@ class PruebasEntradaYCorsTest {
         @Test
         @DisplayName("B9: JSON mal formado → 400, no 500")
         void jsonRoto() throws Exception {
-            mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("{\"rol\":"))
+            mvc.perform(post("/prueba/registro").contentType(MediaType.APPLICATION_JSON).content("{\"rol\":"))
                     .andExpect(status().isBadRequest());
         }
 
         @Test
         @DisplayName("B9: campos vacíos o fuera de rango → 400 con el campo que falla")
         void camposInvalidos() throws Exception {
-            mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+            mvc.perform(post("/prueba/registro").contentType(MediaType.APPLICATION_JSON)
                             .content("{\"rol\":\"PACIENTE\",\"password\":\"123\"}"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.mensaje").value(containsString("password")));
@@ -148,15 +148,17 @@ class PruebasEntradaYCorsTest {
         }
     }
 
-    @RestController
+    // Sin @RestController a propósito: así Spring no lo registra al levantar la aplicación completa
+    // (BaseDeDatosIntegracionTest) y no choca con AuthController. Solo lo usa el MockMvc "standalone".
+    @ResponseBody
     static class RegistroDePrueba {
-        @PostMapping("/api/auth/register")
+        @PostMapping("/prueba/registro")
         String registrar(@Valid @RequestBody RegistroRequest request) {
             return "ok";
         }
     }
 
-    @RestController
+    @ResponseBody
     static class EcoIp {
         @GetMapping("/eco-ip")
         String ip(HttpServletRequest request) {
