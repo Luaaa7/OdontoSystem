@@ -27,7 +27,13 @@ Resultado de OWASP Dependency-Check en el backend (207 librerías analizadas):
 | Después de actualizar | 4 | 8 | Spring Boot **4.1.2**, springdoc **3.2.0**, pdfbox **3.0.8** (más Guava y jsoup de la fila anterior) |
 | Después, con supresiones justificadas | 0 | 0 (8 suprimidas) | DOMPurify 3.4.16 dentro de swagger-ui: riesgo aceptado hasta el 31/12/2026 (CVSS 6.1, Swagger apagado en producción con `SWAGGER_ENABLED=false`); `angus-activation` y `hibernate-validator`: falsos positivos por CPE genérico |
 
-Después de corregir se guardan `npm-audit-web-despues.txt`, `npm-audit-app-despues.txt` y el nuevo resultado de OSV-Scanner del backend (`osv-backend-despues.md`) como evidencia.
+Resultado después de corregir (12/11/2026, Seguridad #9 en el PR #11):
+
+| Repo | Antes | Después | Evidencia |
+|---|---|---|---|
+| Backend (OSV-Scanner) | 40 vulnerabilidades (8 críticas, 16 altas, 16 moderadas) | **0** (*No issues found*) | [`evidencias/osv-backend-antes.md`](evidencias/osv-backend-antes.md) → [`evidencias/osv-backend-despues.png`](evidencias/osv-backend-despues.png) |
+| Web (`npm audit`) | 1 crítica, 5 altas, 7 bajas | Pendiente: `npm audit fix` en el repo de la web | `npm-audit-web-despues.txt` |
+| App (`npm audit`) | 9 altas, 8 moderadas, 1 baja | Pendiente: `shadcn` a `devDependencies` y `npm audit fix` | `npm-audit-app-despues.txt` |
 
 ## 2. Matriz de control de acceso (A01: Broken Access Control)
 
