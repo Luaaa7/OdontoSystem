@@ -293,6 +293,10 @@
                     <nvdApiDelay>6000</nvdApiDelay>
                     <!-- Páginas más pequeñas: el NVD corta (522/524) las respuestas grandes -->
                     <nvdApiResultsPerPage>500</nvdApiResultsPerPage>
+                    <!-- Riesgos aceptados y falsos positivos, cada uno justificado (revisión de Sebastián) -->
+                    <suppressionFiles>
+                        <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+                    </suppressionFiles>
                 </configuration>
             </plugin>
             <plugin>
@@ -305,23 +309,6 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
-                </configuration>
-            </plugin>
-
-            <plugin>
-                <groupId>org.owasp</groupId>
-                <artifactId>dependency-check-maven</artifactId>
-                <version>10.0.4</version>
-                <configuration>
-                    <formats>
-                        <format>HTML</format>
-                        <format>JSON</format>
-                    </formats>
-                <failBuildOnCVSS>9</failBuildOnCVSS>
-                <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
-                <suppressionFiles>
-                    <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
-                </suppressionFiles>
                 </configuration>
             </plugin>
 
