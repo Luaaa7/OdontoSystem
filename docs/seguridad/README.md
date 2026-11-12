@@ -118,7 +118,7 @@ Pruebas automáticas que corren en cada push (*Backend - pruebas*); las de CORS 
 | B9 | Registro con `rol: "ADMIN"`, JSON mal formado o campos fuera de rango | 400 sin detalles internos | `BaseDeDatosIntegracionTest` (app real) | **Corregido**: antes respondía 500; se agregó el manejo de `HttpMessageNotReadableException` en `GlobalExceptionHandler` |
 | B10 | Archivo disfrazado (.html/.svg renombrado a .jpg) o de más de 5 MB | Rechazado | `ArchivoServiceTest` (valida el contenido real, no la extensión) | Cumple |
 | B11 | Fuerza bruta: 5 fallos por cuenta y 20 por IP | Bloqueo de 15 min (429) | `LimiteLoginServiceTest` | Cumple |
-| B11 | ¿Se puede falsear la IP con `X-Forwarded-For`? | — | `PruebasEntradaYCorsTest` | **Riesgo a confirmar**: Spring toma el primer valor de la cabecera; si el proxy de Railway no la reemplaza, el bloqueo por IP se podría saltar (el de 5 por cuenta sigue) |
+| B11 | ¿Se puede falsear la IP con `X-Forwarded-For`? | La IP guardada es la real | `PruebasEntradaYCorsTest` (Spring toma el primer valor) + prueba en producción del 12/11/2026: login con `X-Forwarded-For: 203.0.113.7` → `tokens_refresco.ip_origen` guardó la IP real del cliente | **Mitigado por la plataforma**: la entrada de Railway reemplaza la cabecera que manda el cliente. Si se cambia de hosting, volver a probarlo |
 | B12 | Aviso de pago (webhook) falso o de una orden ajena | No confirma nada | `PagoServiceMercadoPagoTest` (el aviso se verifica consultando a Mercado Pago) | Cumple |
 | I1 | CORS desde `http://evil.com` o con una cabecera no permitida | 403 sin `Access-Control-Allow-Origin` | `PruebasEntradaYCorsTest` | Cumple |
 | I3 | Reusar un refresh token ya usado | 401 y se cierran todas las sesiones del usuario | `TokenRefrescoServiceTest` | Cumple |

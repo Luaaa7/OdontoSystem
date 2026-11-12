@@ -134,6 +134,21 @@ class CitaServiceTest {
     }
 
     @Test
+    @DisplayName("DEF-06: el paciente ya tiene otra cita a esa hora (con otro odontólogo) → 409 sin tocar la BD")
+    void pacienteConOtraCitaALaMismaHora() {
+        prepararReserva(lunesA(10));
+        when(citaRepository.pacienteTieneCitaCruzada(eq(paciente.getId()), eq(CitaService.ESTADOS_QUE_OCUPAN_AL_PACIENTE),
+                eq(lunesA(10)), eq(lunesA(11)))).thenReturn(true);
+
+        assertThatThrownBy(() -> servicio.reservar(paciente.getId(),
+                new ReservaRequest(perfil.getUsuarioId(), limpieza.getId(), lunesA(10))))
+                .satisfies(e -> assertThat(estado(e)).isEqualTo(409))
+                .hasMessageContaining("Ya tienes otra cita a esa hora");
+        verify(citaRepository, never()).saveAndFlush(any());
+        verify(bloqueoReservas, never()).tomar(anyString(), any());
+    }
+
+    @Test
     @DisplayName("Otro paciente tiene el candado → 409; la BD rechaza el cruce → 409")
     void carreras() {
         prepararReserva(lunesA(10));
