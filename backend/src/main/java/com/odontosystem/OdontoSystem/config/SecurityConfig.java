@@ -19,11 +19,24 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    /**
+     * La API responde JSON; las únicas páginas que sirve (Swagger en local, /privacidad y /eliminar-cuenta)
+     * cargan sus propios archivos. Nada puede incrustar la app en un iframe (frame-ancestors 'none').
+     */
+    static final String POLITICA_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            + "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; "
+            + "connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'";
+
+    /** La API no usa cámara, micrófono ni ubicación del navegador. */
+    static final String POLITICA_PERMISOS = "camera=(), microphone=(), geolocation=(), payment=()";
 
     private final UsuarioDetailsService usuarioDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -68,6 +81,14 @@ public class SecurityConfig {
                 // 4. CORS: deja que los frontends (web/app) llamen a la API desde el navegador.
                 //    Los orígenes permitidos se configuran en CorsConfig (propiedad app.cors.allowed-origins).
                 .cors(Customizer.withDefaults())
+                // 4b. Cabeceras de seguridad (OWASP). Spring ya pone X-Content-Type-Options: nosniff,
+                //     X-Frame-Options: DENY, Cache-Control y HSTS; aquí se agregan las que reporta OWASP ZAP:
+                //     CSP (qué puede cargar una página), Referrer-Policy y Permissions-Policy.
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(POLITICA_CSP))
+                        .referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER))
+                        .addHeaderWriter(new StaticHeadersWriter("Permissions-Policy", POLITICA_PERMISOS))
+                )
                 // 5. Permite el acceso a las rutas de autenticación, públicas, Swagger y al manejo de errores
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/public/**", "/error").permitAll()

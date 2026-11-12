@@ -1,0 +1,98 @@
+# npm audit --omit=dev · repo web (Frontend_OdontoSystem) · 2026-11-05
+# npm audit report
+
+dompurify  <=3.4.16
+Severity: critical
+DOMPurify: IN_PLACE: node-removing afterSanitize hook leaves detached subtree event handlers armed, causing DOM XSS - https://github.com/advisories/GHSA-p98j-92pf-mc4p
+DOMPurify: IN_PLACE returns a force-removed rawtext root whose text carries attacker markup — pure HTML reparse executes - https://github.com/advisories/GHSA-6688-9rhm-gjv2
+DOMPurify SAFE_FOR_TEMPLATES bypass: split template expressions survive in attached shadow root content on DOM output modes - https://github.com/advisories/GHSA-cg2g-xh64-v4q7
+DOMPurify IN_PLACE: hook that removes a parent or sibling leaves the detached subtree's event handlers armed (incomplete fix for GHSA-p98j-92pf-mc4p) - https://github.com/advisories/GHSA-mrv2-3pqr-j5jr
+DOMPurify: SMIL attributeName=href guard is skipped when PARSER_MEDIA_TYPE is application/xhtml+xml - https://github.com/advisories/GHSA-c6gr-qvv4-5v3f
+fix available via `npm audit fix`
+node_modules/dompurify
+
+katex  0.11.0 - 0.18.1
+KaTeX: Existing prototype pollution can bypass trust restrictions - https://github.com/advisories/GHSA-238p-pmpm-9mq7
+No fix available
+node_modules/katex
+  @streamdown/math  *
+  Depends on vulnerable versions of katex
+  Depends on vulnerable versions of rehype-katex
+  Depends on vulnerable versions of remark-math
+  node_modules/@streamdown/math
+  mermaid  10.9.0-rc.1 - 12.1.0
+  Depends on vulnerable versions of katex
+  node_modules/mermaid
+    @streamdown/mermaid  *
+    Depends on vulnerable versions of mermaid
+    node_modules/@streamdown/mermaid
+  micromark-extension-math  *
+  Depends on vulnerable versions of katex
+  node_modules/micromark-extension-math
+    remark-math  >=4.0.0
+    Depends on vulnerable versions of micromark-extension-math
+    node_modules/remark-math
+  rehype-katex  >=2.0.0
+  Depends on vulnerable versions of katex
+  node_modules/rehype-katex
+
+seroval  <=1.6.10
+Severity: high
+Seroval: Code injection through a typed array's own constructor property - https://github.com/advisories/GHSA-f86p-h4j2-7qgj
+Seroval: Script injection through RegExp sources in serialized output - https://github.com/advisories/GHSA-9wx9-5pv9-3349
+Seroval: fromJSON deserializer trusts node-supplied array length and sequence doneAt (unauthenticated event-loop DoS) - https://github.com/advisories/GHSA-97r2-qh9m-474h
+Seroval `fromJSON`/`fromCrossJSON` denial of service via unvalidated array node length - https://github.com/advisories/GHSA-wp97-x4hv-qvhp
+Seroval: Deserialization invokes attacker-chosen callables: AsyncIteratorFactoryInstance calls source.on(listener) without type check - https://github.com/advisories/GHSA-7rv5-mrxv-xcr9
+fix available via `npm audit fix`
+node_modules/seroval
+
+source-map-js  1.0.0 - 1.2.1
+Severity: high
+source-map-js allows event-loop denial of service through indexed source-map section offsets - https://github.com/advisories/GHSA-68fv-2mgg-jv7q
+fix available via `npm audit fix`
+node_modules/source-map-js
+
+undici  7.0.0 - 7.30.0
+Severity: high
+undici vulnerable to Denial of Service via unbounded memory in the EventSource parser - https://github.com/advisories/GHSA-4qv8-2p9j-2685
+undici vulnerable to Subresource Integrity bypass via non-lowercase algorithm tokens - https://github.com/advisories/GHSA-f72v-6w45-q472
+undici vulnerable to Denial of Service via unhandled error on excessive content-encodings - https://github.com/advisories/GHSA-xjj6-f33q-929c
+undici vulnerable to cache poisoning and cross-user disclosure via cross-origin redirects - https://github.com/advisories/GHSA-4w7w-5xrc-9h26
+undici vulnerable to TLS certificate validation bypass via dropped tls options in Agent - https://github.com/advisories/GHSA-2m5v-pch6-74hx
+undici vulnerable to Denial of Service via TLS 1.2 certificate-changing renegotiation - https://github.com/advisories/GHSA-qrxm-fqhp-jwvm
+undici WebSocket client vulnerable to Denial of Service via unbounded automatic PONG buffering - https://github.com/advisories/GHSA-9fm3-97px-rjf6
+undici vulnerable to Denial of Service via unhandled exception in the decompress interceptor - https://github.com/advisories/GHSA-55wc-3pg8-jfw6
+fix available via `npm audit fix`
+node_modules/undici
+
+vite  8.0.0 - 8.1.5
+Severity: high
+launch-editor: escapeCmdArgs() omits % escaping on Windows - https://github.com/advisories/GHSA-698v-4r3x-3vcv
+launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors - https://github.com/advisories/GHSA-r825-w8mm-5pxw
+launch-editor: `fs.existsSync()` existence check can be bypassed on Windows - https://github.com/advisories/GHSA-587h-7wmj-h5pm
+Vite: Cross origin script execution through Vite custom middleware - https://github.com/advisories/GHSA-9jrq-w75r-8gcw
+Vite: Files outside `server.fs.allow` could be served when project paths match system paths on non-Windows machine - https://github.com/advisories/GHSA-rq7h-c2jc-7f22
+fix available via `npm audit fix --force`
+Will install vite@8.3.6, which is outside the stated dependency range
+node_modules/vite
+
+zod  <4.6.6
+Severity: high
+Zod can exhaust memory while validating oversized constrained collections - https://github.com/advisories/GHSA-mrhx-c7xc-m3w5
+fix available via `npm audit fix --force`
+Will install zod@4.6.7, which is a breaking change
+node_modules/@tanstack/router-generator/node_modules/zod
+node_modules/@tanstack/router-plugin/node_modules/zod
+node_modules/@tanstack/start-plugin-core/node_modules/zod
+node_modules/zod
+
+13 vulnerabilities (7 low, 5 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.

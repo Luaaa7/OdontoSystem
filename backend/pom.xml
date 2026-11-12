@@ -9,7 +9,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.0</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -124,7 +124,7 @@
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>3.0.0</version>
+            <version>3.2.0</version>
         </dependency>
 
         <!-- /actuator/health: Railway lo consulta para saber si la app está viva -->
@@ -169,7 +169,7 @@
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.17.2</version>
+            <version>1.23.2</version>
         </dependency>
 
         <!-- Librerías de apoyo (Apache): utilidades de texto y exportación a Excel -->
@@ -181,7 +181,7 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>33.4.8-jre</version>
+            <version>33.7.2-jre</version>
         </dependency>
         <dependency>
             <groupId>org.apache.poi</groupId>
@@ -192,7 +192,7 @@
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
-            <version>3.0.5</version>
+            <version>3.0.8</version>
         </dependency>
         
     </dependencies>
@@ -265,6 +265,40 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- SCA (OWASP A06): revisa las librerías contra la base de vulnerabilidades conocidas (NVD/CVE).
+                 No corre en el build normal; se llama a mano o desde GitHub Actions (seguridad.yml):
+                   ./mvnw dependency-check:check
+                 Reporte en target/dependency-check-report.html. Con la variable NVD_API_KEY descarga la base mucho más rápido. -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>12.1.0</version>
+                <configuration>
+                    <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                    </formats>
+                    <!-- Solo las librerías que viajan con la app (no las de pruebas) -->
+                    <skipTestScope>true</skipTestScope>
+                    <!-- Reporta sin romper el build; la decisión se toma al revisar el reporte -->
+                    <failBuildOnCVSS>11</failBuildOnCVSS>
+                    <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+                    <nodeAnalyzerEnabled>false</nodeAnalyzerEnabled>
+                    <nodeAuditAnalyzerEnabled>false</nodeAuditAnalyzerEnabled>
+                    <retireJsAnalyzerEnabled>false</retireJsAnalyzerEnabled>
+                    <assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+                    <!-- El NVD a veces responde 5xx por carga: reintentar más y espaciar las peticiones -->
+                    <nvdMaxRetryCount>20</nvdMaxRetryCount>
+                    <nvdApiDelay>6000</nvdApiDelay>
+                    <!-- Páginas más pequeñas: el NVD corta (522/524) las respuestas grandes -->
+                    <nvdApiResultsPerPage>500</nvdApiResultsPerPage>
+                    <!-- Riesgos aceptados y falsos positivos, cada uno justificado (revisión de Sebastián) -->
+                    <suppressionFiles>
+                        <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+                    </suppressionFiles>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -277,6 +311,7 @@
                     </excludes>
                 </configuration>
             </plugin>
+
         </plugins>
     </build>
 
