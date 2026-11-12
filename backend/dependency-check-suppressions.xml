@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+  <!-- Riesgo aceptado temporalmente: DOMPurify 3.4.16 dentro de swagger-ui.
+       Corregido en DOMPurify 3.4.17; esperamos swagger-ui/springdoc que lo incluya.
+       Mitigación: Swagger deshabilitado en producción. -->
+  <suppress until="2026-12-31Z">
+    <notes><![CDATA[Severidad real Media (CVSS 6.1). Requiere hooks personalizados o modo de plantillas, que la app no usa. Swagger apagado en producción.]]></notes>
+    <packageUrl regex="true">^pkg:javascript/DOMPurify@3\.4\.16$</packageUrl>
+    <cve>CVE-2026-116802</cve>
+    <cve>CVE-2026-116803</cve>
+    <cve>CVE-2026-116804</cve>
+  </suppress>
+
+  <!-- Falso positivo: el CPE corresponde a angus_mail, no a angus-activation. -->
+  <suppress>
+    <notes><![CDATA[El CVE aplica al producto Angus Mail, no a angus-activation.]]></notes>
+    <packageUrl regex="true">^pkg:maven/org\.eclipse\.angus/angus-activation@.*$</packageUrl>
+    <cve>CVE-2025-7962</cve>
+  </suppress>
+
+  <!-- Falso positivo: coincidencia por CPE genérico. -->
+  <suppress>
+    <notes><![CDATA[Coincidencia por CPE genérico; la versión 9.1.5 no está en el rango afectado.]]></notes>
+    <packageUrl regex="true">^pkg:maven/org\.hibernate\.validator/hibernate-validator@.*$</packageUrl>
+    <cve>CVE-2025-15104</cve>
+  </suppress>
+
+</suppressions>
