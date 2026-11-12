@@ -30,7 +30,10 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Turnos libres de un odontólogo para un servicio en un día (RF06).
@@ -54,10 +57,24 @@ public class DisponibilidadService {
     private final ConfirmacionAgendaRepository confirmacionRepository;
     private final Clock clock;
 
+    /**
+     * DEF-05: el perfil, el servicio y el horario semanal casi no cambian, y cada consulta a la BD (Supabase, São Paulo)
+     * cuesta cientos de ms desde Railway. La consulta pública de disponibilidad los reutiliza durante 60 s; las citas y
+     * los bloqueos se leen siempre al momento. Reservar y reprogramar NO usan esta copia: vuelven a comprobar todo.
+     */
+    static final Duration VIGENCIA_CONFIGURACION = Duration.ofSeconds(60);
+    private static final int MAXIMO_EN_MEMORIA = 1000;
+    private final Map<ClaveConfiguracion, Configuracion> configuraciones = new ConcurrentHashMap<>();
+
+    private record ClaveConfiguracion(UUID odontologoId, UUID servicioId) {}
+    private record Configuracion(PerfilOdontologo perfil, Servicio servicio, List<HorarioAtencion> horarios,
+                                 OffsetDateTime vence) {}
+
     @Transactional(readOnly = true)
     public DisponibilidadResponse disponibilidad(UUID odontologoId, UUID servicioId, LocalDate fecha) {
-        PerfilOdontologo perfil = exigirPerfilPublicable(odontologoId);
-        Servicio servicio = exigirServicioActivo(odontologoId, servicioId);
+        Configuracion configuracion = configuracion(odontologoId, servicioId);
+        PerfilOdontologo perfil = configuracion.perfil();
+        Servicio servicio = configuracion.servicio();
         ZoneId zona = ZoneId.of(perfil.getZonaHoraria());
 
         LocalDate hoy = LocalDate.now(clock.withZone(zona));
@@ -66,11 +83,32 @@ public class DisponibilidadService {
                     "La fecha debe estar entre hoy y " + DIAS_MAXIMOS_ADELANTE + " días adelante");
         }
         return new DisponibilidadResponse(odontologoId, servicioId, fecha, zona.getId(), servicio.getDuracionMinutos(),
-                turnosLibres(perfil, servicio, fecha));
+                turnosLibres(perfil, servicio, configuracion::horarios, fecha));
+    }
+
+    private Configuracion configuracion(UUID odontologoId, UUID servicioId) {
+        ClaveConfiguracion clave = new ClaveConfiguracion(odontologoId, servicioId);
+        OffsetDateTime ahora = OffsetDateTime.now(clock);
+        Configuracion guardada = configuraciones.get(clave);
+        if (guardada != null && guardada.vence().isAfter(ahora)) return guardada;
+
+        PerfilOdontologo perfil = exigirPerfilPublicable(odontologoId);
+        Servicio servicio = exigirServicioActivo(odontologoId, servicioId);
+        List<HorarioAtencion> horarios = horarioRepository.findByOdontologo_UsuarioIdOrderByDiaSemanaAscHoraInicioAsc(odontologoId);
+        Configuracion nueva = new Configuracion(perfil, servicio, List.copyOf(horarios), ahora.plus(VIGENCIA_CONFIGURACION));
+        if (configuraciones.size() >= MAXIMO_EN_MEMORIA) configuraciones.clear();
+        configuraciones.put(clave, nueva);
+        return nueva;
     }
 
     /** Lo usa también CitaService para comprobar que el turno pedido sigue libre. */
     List<Turno> turnosLibres(PerfilOdontologo perfil, Servicio servicio, LocalDate fecha) {
+        return turnosLibres(perfil, servicio,
+                () -> horarioRepository.findByOdontologo_UsuarioIdOrderByDiaSemanaAscHoraInicioAsc(perfil.getUsuarioId()), fecha);
+    }
+
+    private List<Turno> turnosLibres(PerfilOdontologo perfil, Servicio servicio, Supplier<List<HorarioAtencion>> horarios,
+                                     LocalDate fecha) {
         ZoneId zona = ZoneId.of(perfil.getZonaHoraria());
         UUID odontologoId = perfil.getUsuarioId();
         DiaSemana dia = DiaSemana.values()[fecha.getDayOfWeek().getValue() - 1];
@@ -88,7 +126,7 @@ public class DisponibilidadService {
         OffsetDateTime ahora = OffsetDateTime.now(clock);
 
         List<Turno> turnos = new ArrayList<>();
-        for (HorarioAtencion h : horarioRepository.findByOdontologo_UsuarioIdOrderByDiaSemanaAscHoraInicioAsc(odontologoId)) {
+        for (HorarioAtencion h : horarios.get()) {
             if (h.getDiaSemana() != dia) continue;
             Duration paso = Duration.ofMinutes(h.getIntervaloMinutos());
             ZonedDateTime finTramo = ZonedDateTime.of(fecha, h.getHoraFin(), zona);

@@ -39,6 +39,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** Turnos libres con un reloj fijo: lunes 19/10/2026, 08:00 en Lima (13:00 UTC). */
@@ -134,8 +136,12 @@ class DisponibilidadServiceTest {
         assertThatThrownBy(() -> servicio.disponibilidad(odontologoId, limpieza.getId(), LUNES.plusDays(61)))
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value()).isEqualTo(400));
 
+        // Instancia nueva: la anterior guardó el perfil 60 s (DEF-05)
+        var sinCopia = new DisponibilidadService(perfilRepository, servicioRepository, horarioRepository,
+                citaRepository, bloqueoRepository, confirmacionRepository,
+                Clock.fixed(Instant.parse("2026-10-19T13:00:00Z"), ZoneOffset.UTC));
         perfil.setEstadoVerificacion(EstadoVerificacionOdontologo.PENDIENTE);
-        assertThatThrownBy(() -> servicio.disponibilidad(odontologoId, limpieza.getId(), LUNES))
+        assertThatThrownBy(() -> sinCopia.disponibilidad(odontologoId, limpieza.getId(), LUNES))
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value()).isEqualTo(404));
     }
 
@@ -145,5 +151,21 @@ class DisponibilidadServiceTest {
         when(confirmacionRepository.existsByOdontologoIdAndFechaAndAtiendeTrue(odontologoId, LUNES)).thenReturn(false);
         assertThat(servicio.turnosLibres(perfil, limpieza, LUNES)).isEmpty();
         assertThat(servicio.turnosLibres(perfil, limpieza, LUNES.plusDays(1))).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("DEF-05: la segunda consulta en 60 s reutiliza perfil, servicio y horario; citas y bloqueos se leen siempre")
+    void reutilizaConfiguracion() {
+        when(perfilRepository.buscarConUsuario(odontologoId)).thenReturn(Optional.of(perfil));
+        when(servicioRepository.findByIdAndOdontologo_UsuarioId(limpieza.getId(), odontologoId)).thenReturn(Optional.of(limpieza));
+
+        var primera = servicio.disponibilidad(odontologoId, limpieza.getId(), LUNES.plusDays(1));
+        var segunda = servicio.disponibilidad(odontologoId, limpieza.getId(), LUNES.plusDays(1));
+
+        assertThat(segunda.turnos()).isEqualTo(primera.turnos()).isNotEmpty();
+        verify(perfilRepository, times(1)).buscarConUsuario(odontologoId);
+        verify(servicioRepository, times(1)).findByIdAndOdontologo_UsuarioId(limpieza.getId(), odontologoId);
+        verify(horarioRepository, times(1)).findByOdontologo_UsuarioIdOrderByDiaSemanaAscHoraInicioAsc(odontologoId);
+        verify(citaRepository, times(2)).cruzadas(eq(odontologoId), anyList(), any(), any());
     }
 }
