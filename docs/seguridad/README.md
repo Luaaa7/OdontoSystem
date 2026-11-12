@@ -33,7 +33,7 @@ Resultado después de corregir (12/11/2026, Seguridad #9 en el PR #11):
 |---|---|---|---|
 | Backend (OSV-Scanner) | 40 vulnerabilidades (8 críticas, 16 altas, 16 moderadas) | **0** (*No issues found*) | [`evidencias/osv-backend-antes.md`](evidencias/osv-backend-antes.md) → [`evidencias/osv-backend-despues.png`](evidencias/osv-backend-despues.png) |
 | Web (`npm audit`) | 1 crítica, 5 altas, 7 bajas | Pendiente: `npm audit fix` en el repo de la web | `npm-audit-web-despues.txt` |
-| App (`npm audit`) | 9 altas, 8 moderadas, 1 baja | Pendiente: `shadcn` a `devDependencies` y `npm audit fix` | `npm-audit-app-despues.txt` |
+| App (`npm audit --omit=dev`) | 18 (1 baja, 8 moderadas, 9 altas) | **0** (12/11/2026, Nicole: `shadcn` pasó a `devDependencies` + `npm audit fix` sin `--force`; 95/95 pruebas, build y APK probados en el teléfono) | [`evidencias/npm-audit-app-antes.txt`](evidencias/npm-audit-app-antes.txt) → [`evidencias/npm-audit-app-despues.txt`](evidencias/npm-audit-app-despues.txt); paquetes cambiados en [`evidencias/npm-app-paquetes-cambiados.txt`](evidencias/npm-app-paquetes-cambiados.txt). Riesgo aceptado: el audit completo (con herramientas de desarrollo) aún marca 18 en Vitest, Vite 5 y `shadcn`; no entran en el APK y corregirlas exige subir de versión mayor (Vitest 5, Vite 8), queda planificado |
 
 ## 2. Matriz de control de acceso (A01: Broken Access Control)
 
