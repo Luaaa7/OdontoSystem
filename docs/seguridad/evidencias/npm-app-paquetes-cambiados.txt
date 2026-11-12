@@ -1,0 +1,184 @@
+CAMBIARON (74)
+@babel/plugin-transform-react-jsx-self  7.25.7 -> 7.29.7
+@babel/plugin-transform-react-jsx-source  7.25.7 -> 7.29.7
+@capacitor/cli  8.5.3 -> 8.6.2
+@eslint-community/eslint-utils  4.4.0 -> 4.10.1
+@eslint-community/regexpp  4.11.1 -> 4.12.3
+@eslint/config-array  0.18.0 -> 0.21.2
+@eslint/core  0.6.0 -> 0.17.0
+@eslint/eslintrc  3.1.0 -> 3.3.7
+@eslint/js  9.12.0 -> 9.39.5
+@eslint/object-schema  2.1.4 -> 2.1.7
+@eslint/plugin-kit  0.2.0 -> 0.4.1
+@humanfs/core  0.19.0 -> 0.19.2
+@humanfs/node  0.16.5 -> 0.16.8
+@humanwhocodes/retry  0.3.1 -> 0.4.3
+@rollup/rollup-android-arm-eabi  4.24.0 -> 4.68.2
+@rollup/rollup-android-arm64  4.24.0 -> 4.68.2
+@rollup/rollup-darwin-arm64  4.24.0 -> 4.68.2
+@rollup/rollup-darwin-x64  4.24.0 -> 4.68.2
+@rollup/rollup-linux-arm-gnueabihf  4.24.0 -> 4.68.2
+@rollup/rollup-linux-arm-musleabihf  4.24.0 -> 4.68.2
+@rollup/rollup-linux-arm64-gnu  4.24.0 -> 4.68.2
+@rollup/rollup-linux-arm64-musl  4.24.0 -> 4.68.2
+@rollup/rollup-linux-riscv64-gnu  4.24.0 -> 4.68.2
+@rollup/rollup-linux-s390x-gnu  4.24.0 -> 4.68.2
+@rollup/rollup-linux-x64-gnu  4.24.0 -> 4.68.2
+@rollup/rollup-linux-x64-musl  4.24.0 -> 4.68.2
+@rollup/rollup-win32-arm64-msvc  4.24.0 -> 4.68.2
+@rollup/rollup-win32-ia32-msvc  4.24.0 -> 4.68.2
+@rollup/rollup-win32-x64-msvc  4.24.0 -> 4.68.2
+@types/estree  1.0.6 -> 1.0.10
+@typescript-eslint/eslint-plugin  8.8.1 -> 8.72.2
+@typescript-eslint/parser  8.8.1 -> 8.72.2
+@typescript-eslint/scope-manager  8.8.1 -> 8.72.2
+@typescript-eslint/type-utils  8.8.1 -> 8.72.2
+@typescript-eslint/types  8.8.1 -> 8.72.2
+@typescript-eslint/typescript-estree  8.8.1 -> 8.72.2
+@typescript-eslint/utils  8.8.1 -> 8.72.2
+@typescript-eslint/visitor-keys  8.8.1 -> 8.72.2
+@vitejs/plugin-react  4.3.2 -> 4.7.0
+acorn  8.12.1 -> 8.19.0
+ajv  6.12.6 -> 6.15.0
+baseline-browser-mapping  2.11.25 -> 2.11.37
+brace-expansion  1.1.11 -> 5.0.13
+browserslist  4.29.0 -> 4.29.5
+caniuse-lite  1.0.30001810 -> 1.0.30001826
+electron-to-chromium  1.5.433 -> 1.5.483
+eslint  9.12.0 -> 9.39.5
+eslint-scope  8.1.0 -> 8.4.0
+eslint-visitor-keys  4.1.0 -> 4.2.1
+espree  10.2.0 -> 10.4.0
+fast-uri  3.1.8 -> 3.1.9
+flatted  3.3.1 -> 3.4.4
+import-fresh  3.3.0 -> 3.3.1
+ip-address  10.7.2 -> 10.7.6
+js-yaml  4.1.0 -> 4.3.2
+minimatch  3.1.2 -> 10.2.6
+node-releases  2.0.56 -> 2.0.63
+picomatch  2.3.1 -> 2.3.2
+postcss-selector-parser  6.1.2 -> 6.1.6
+react-refresh  0.14.2 -> 0.17.0
+rimraf  6.1.3 -> 6.1.4
+rollup  4.24.0 -> 4.68.2
+shadcn  4.21.0 -> 4.23.0
+source-map-js  1.2.1 -> 1.2.2
+sucrase  3.35.0 -> 3.35.1
+systeminformation  5.33.12 -> 5.33.20
+ts-api-utils  1.3.0 -> 2.5.0
+typescript-eslint  8.8.1 -> 8.72.2
+undici  7.29.1 -> 7.30.2
+update-browserslist-db  1.3.3 -> 1.3.4
+vite  5.4.8 -> 5.4.21
+xcode  3.0.1 -> 4.0.0
+yaml  2.5.1 -> 2.9.1
+zod  3.25.76 -> 4.6.7
+
+ENTRARON (22)
+@eslint/config-helpers@0.4.2
+@humanfs/types@0.15.0
+@isaacs/nonrecursive-glob-match@1.1.0
+@modelcontextprotocol/core@2.4.0
+@modelcontextprotocol/server@2.4.0
+@rolldown/pluginutils@1.0.0-beta.27
+@rollup/rollup-android-x64@4.68.2
+@rollup/rollup-freebsd-arm64@4.68.2
+@rollup/rollup-freebsd-x64@4.68.2
+@rollup/rollup-linux-loong64-gnu@4.68.2
+@rollup/rollup-linux-loong64-musl@4.68.2
+@rollup/rollup-linux-ppc64-gnu@4.68.2
+@rollup/rollup-linux-ppc64-musl@4.68.2
+@rollup/rollup-linux-riscv64-musl@4.68.2
+@rollup/rollup-openbsd-x64@4.68.2
+@rollup/rollup-openharmony-arm64@4.68.2
+@rollup/rollup-win32-x64-gnu@4.68.2
+@shadcn/registry@0.2.1
+@typescript-eslint/project-service@8.72.2
+@typescript-eslint/tsconfig-utils@8.72.2
+tinyglobby@0.2.17
+type-fest@4.41.0
+
+SALIERON (83)
+@hono/node-server@2.1.1
+@isaacs/cliui@8.0.2
+@modelcontextprotocol/sdk@1.30.0
+@pkgjs/parseargs@0.11.0
+@rollup/rollup-linux-powerpc64le-gnu@4.24.0
+accepts@2.0.0
+ajv-formats@3.0.1
+body-parser@2.3.0
+bytes@3.1.2
+call-bound@1.0.4
+content-disposition@1.1.0
+content-type@1.0.5
+cookie-signature@1.2.2
+cookie@0.7.2
+cors@2.8.6
+cosmiconfig@9.0.2
+depd@2.0.0
+eastasianwidth@0.2.0
+ee-first@1.1.1
+emoji-regex@9.2.2
+encodeurl@2.0.0
+error-ex@1.3.4
+escape-html@1.0.3
+etag@1.8.1
+eventsource-parser@3.1.1
+eventsource@3.0.7
+express-rate-limit@8.7.0
+express@5.2.1
+finalhandler@2.1.1
+foreground-child@3.3.0
+forwarded@0.2.0
+fresh@2.0.0
+glob@10.4.5
+graphemer@1.4.0
+hono@4.13.8
+http-errors@2.0.1
+iconv-lite@0.7.3
+ipaddr.js@1.9.1
+is-arrayish@0.2.1
+is-promise@4.0.0
+jackspeak@3.4.3
+jose@6.2.12
+json-parse-even-better-errors@2.3.1
+json-schema-typed@8.0.2
+media-typer@1.1.1
+merge-descriptors@2.0.0
+mime-db@1.54.0
+mime-types@3.0.2
+negotiator@1.1.0
+object-inspect@1.13.4
+on-finished@2.4.1
+once@1.4.0
+parse-json@5.2.0
+parseurl@1.3.3
+path-scurry@1.11.1
+path-to-regexp@8.4.2
+pkce-challenge@5.0.1
+proxy-addr@2.0.8
+qs@6.16.0
+range-parser@1.3.0
+raw-body@3.0.2
+router@2.2.0
+send@1.2.1
+serve-static@2.2.1
+setprototypeof@1.2.0
+side-channel-list@1.0.1
+side-channel-map@1.0.1
+side-channel-weakmap@1.0.2
+side-channel@1.1.1
+statuses@2.0.2
+string-width-cjs@4.2.3
+string-width@5.1.2
+strip-ansi-cjs@6.0.1
+text-table@0.2.0
+toidentifier@1.0.1
+type-is@2.1.0
+unpipe@1.0.0
+uuid@7.0.3
+vary@1.1.2
+wrap-ansi-cjs@7.0.0
+wrap-ansi@8.1.0
+wrappy@1.0.2
+zod-to-json-schema@3.25.2
