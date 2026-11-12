@@ -32,7 +32,7 @@ Resultado después de corregir (12/11/2026, Seguridad #9 en el PR #11):
 | Repo | Antes | Después | Evidencia |
 |---|---|---|---|
 | Backend (OSV-Scanner) | 40 vulnerabilidades (8 críticas, 16 altas, 16 moderadas) | **0** (*No issues found*) | [`evidencias/osv-backend-antes.md`](evidencias/osv-backend-antes.md) → [`evidencias/osv-backend-despues.png`](evidencias/osv-backend-despues.png) |
-| Web (`npm audit`) | 1 crítica, 5 altas, 7 bajas | Pendiente: `npm audit fix` en el repo de la web | `npm-audit-web-despues.txt` |
+| Web (`npm audit --omit=dev`) | 13 (1 crítica, 5 altas, 7 bajas) | **8** (1 alta, 7 bajas) (12/11/2026, Nicole: `npm audit fix` sin `--force` y vite 8.1.5 → 8.1.7). Corregidas: dompurify (crítica), seroval, source-map-js, undici y vite | [`evidencias/npm-audit-web-antes.txt`](evidencias/npm-audit-web-antes.txt) → [`evidencias/npm-audit-web-despues.txt`](evidencias/npm-audit-web-despues.txt). Riesgo aceptado: zod (alta) solo se corrige en la versión mayor 4; katex (7 bajas, vía mermaid/streamdown) no tiene corrección publicada |
 | App (`npm audit --omit=dev`) | 18 (1 baja, 8 moderadas, 9 altas) | **0** (12/11/2026, Nicole: `shadcn` pasó a `devDependencies` + `npm audit fix` sin `--force`; 95/95 pruebas, build y APK probados en el teléfono) | [`evidencias/npm-audit-app-antes.txt`](evidencias/npm-audit-app-antes.txt) → [`evidencias/npm-audit-app-despues.txt`](evidencias/npm-audit-app-despues.txt); paquetes cambiados en [`evidencias/npm-app-paquetes-cambiados.txt`](evidencias/npm-app-paquetes-cambiados.txt). Riesgo aceptado: el audit completo (con herramientas de desarrollo) aún marca 18 en Vitest, Vite 5 y `shadcn`; no entran en el APK y corregirlas exige subir de versión mayor (Vitest 5, Vite 8), queda planificado |
 
 ## 2. Matriz de control de acceso (A01: Broken Access Control)
@@ -107,22 +107,22 @@ Ruta atacada: `GET https://odontosystem-production.up.railway.app/api/odontologo
 
 Ninguna alerta de la API apareció en el reporte: los 4 hallazgos medios y el bajo corresponden solo a la web de Vercel.
 
-### Resultado 3: web en Vercel después de las cabeceras (ZAP Baseline 2.17, Seguridad #13, 12/11/2026)
+### Resultado 3: web en Vercel después de las cabeceras (ZAP Baseline 2.17, Seguridad #14, 12/11/2026)
 
-Reporte: [`evidencias/zap-web-despues.html`](evidencias/zap-web-despues.html). Resumen: 0 altas, 5 medias, 5 bajas, 5 informativas.
+Reporte: [`evidencias/zap-web-despues.html`](evidencias/zap-web-despues.html). Resumen: 0 altas, 5 medias, 3 bajas, 5 informativas (el 05/11: 0 altas, 4 medias, 1 baja con el escaneo de ZAP Desktop).
 
 | Hallazgo del 05/11 | Después | Qué pasó |
 |---|---|---|
 | CSP no configurada (Media) | **Resuelto** | `server.ts` envía la CSP en cada página. Al existir, ZAP revisa sus directivas y marca tres detalles (filas siguientes) |
 | Falta anti-clickjacking (Media) | **Resuelto** | `X-Frame-Options: DENY` y `frame-ancestors 'none'` |
-| Falta X-Content-Type-Options en las páginas (Baja) | **Resuelto en páginas y `/assets`** | Queda en 4 archivos estáticos de `/public` (`favicon.png`, `favicon-192.png`, `odontosystem-logo.png`, `robots.txt`): ampliar `vercel.json` a todas las rutas |
+| Falta X-Content-Type-Options (Baja) | **Resuelto** | `server.ts` en las páginas y `vercel.json` en todas las rutas (`/(.*)`), incluidos favicon, logo y `robots.txt` |
 | Cross-Domain (`Access-Control-Allow-Origin: *` en `/assets`) (Media) | Se mantiene | Riesgo aceptado: archivos públicos y estáticos de Vercel, sin datos del usuario |
 | SRI ausente en Google Fonts (Media) | Se mantiene | Riesgo aceptado: Google genera el CSS según el navegador, no admite un hash fijo |
 | *Nuevo:* CSP `script-src 'unsafe-inline'` (Media) | Riesgo aceptado | TanStack Start hidrata con scripts en línea. Mejora planificada: nonce por respuesta en `server.ts` |
 | *Nuevo:* CSP `style-src 'unsafe-inline'` (Media) | Riesgo aceptado | Estilos en línea de Tailwind/Radix y de Leaflet |
 | *Nuevo:* CSP con comodín en `img-src` (Media) | Riesgo aceptado | `img-src https:` cubre fotos de Cloudinary, Google y mosaicos de OpenStreetMap. Mejora: listar esos dominios |
-| COEP / COOP / CORP ausentes (Baja) | Se mantiene | COEP rompería Google, pagos y Cloudinary. COOP `same-origin-allow-popups` y CORP `same-origin` se pueden agregar en `vercel.json` tras probar el login con Google |
-| Permissions-Policy en `/assets/*.js` (Baja) | Falso positivo | La política aplica a documentos HTML y ya la envían todas las páginas; en archivos JS no tiene efecto |
+| COEP / COOP / CORP (Baja) | Riesgo aceptado | COOP ya se envía como `same-origin-allow-popups` (ZAP solo acepta `same-origin`, que cerraría la ventana de inicio de sesión con Google). COEP rompería Google, pagos y Cloudinary. CORP queda planificado |
+| Permissions-Policy en `/assets/*.js` (Baja) | **Resuelto** | `vercel.json` la envía en todas las rutas |
 
 ## 4. Pruebas del plan de auditoría (backend)
 
