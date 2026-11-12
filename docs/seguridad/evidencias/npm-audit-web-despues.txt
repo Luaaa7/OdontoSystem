@@ -1,0 +1,44 @@
+# npm audit report
+
+katex  0.11.0 - 0.18.1
+KaTeX: Existing prototype pollution can bypass trust restrictions - https://github.com/advisories/GHSA-238p-pmpm-9mq7
+No fix available
+node_modules/katex
+  @streamdown/math  *
+  Depends on vulnerable versions of katex
+  Depends on vulnerable versions of rehype-katex
+  Depends on vulnerable versions of remark-math
+  node_modules/@streamdown/math
+  mermaid  10.9.0-rc.1 - 12.1.0
+  Depends on vulnerable versions of katex
+  node_modules/mermaid
+    @streamdown/mermaid  *
+    Depends on vulnerable versions of mermaid
+    node_modules/@streamdown/mermaid
+  micromark-extension-math  *
+  Depends on vulnerable versions of katex
+  node_modules/micromark-extension-math
+    remark-math  >=4.0.0
+    Depends on vulnerable versions of micromark-extension-math
+    node_modules/remark-math
+  rehype-katex  >=2.0.0
+  Depends on vulnerable versions of katex
+  node_modules/rehype-katex
+
+zod  <4.6.6
+Severity: high
+Zod can exhaust memory while validating oversized constrained collections - https://github.com/advisories/GHSA-mrhx-c7xc-m3w5
+fix available via `npm audit fix --force`
+Will install zod@4.6.7, which is a breaking change
+node_modules/zod
+
+8 vulnerabilities (7 low, 1 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
