@@ -112,7 +112,7 @@ public class DisponibilidadService {
     }
 
     PerfilOdontologo exigirPerfilPublicable(UUID odontologoId) {
-        return perfilRepository.findById(odontologoId)
+        return perfilRepository.buscarConUsuario(odontologoId)
                 .filter(p -> p.getDesactivadoEn() == null
                         && p.getEstadoVerificacion() == EstadoVerificacionOdontologo.VERIFICADO
                         && (p.getSuspendidoHasta() == null || p.getSuspendidoHasta().isBefore(OffsetDateTime.now(clock)))
