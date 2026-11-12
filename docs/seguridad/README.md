@@ -107,6 +107,23 @@ Ruta atacada: `GET https://odontosystem-production.up.railway.app/api/odontologo
 
 Ninguna alerta de la API apareció en el reporte: los 4 hallazgos medios y el bajo corresponden solo a la web de Vercel.
 
+### Resultado 3: web en Vercel después de las cabeceras (ZAP Baseline 2.17, Seguridad #13, 12/11/2026)
+
+Reporte: [`evidencias/zap-web-despues.html`](evidencias/zap-web-despues.html). Resumen: 0 altas, 5 medias, 5 bajas, 5 informativas.
+
+| Hallazgo del 05/11 | Después | Qué pasó |
+|---|---|---|
+| CSP no configurada (Media) | **Resuelto** | `server.ts` envía la CSP en cada página. Al existir, ZAP revisa sus directivas y marca tres detalles (filas siguientes) |
+| Falta anti-clickjacking (Media) | **Resuelto** | `X-Frame-Options: DENY` y `frame-ancestors 'none'` |
+| Falta X-Content-Type-Options en las páginas (Baja) | **Resuelto en páginas y `/assets`** | Queda en 4 archivos estáticos de `/public` (`favicon.png`, `favicon-192.png`, `odontosystem-logo.png`, `robots.txt`): ampliar `vercel.json` a todas las rutas |
+| Cross-Domain (`Access-Control-Allow-Origin: *` en `/assets`) (Media) | Se mantiene | Riesgo aceptado: archivos públicos y estáticos de Vercel, sin datos del usuario |
+| SRI ausente en Google Fonts (Media) | Se mantiene | Riesgo aceptado: Google genera el CSS según el navegador, no admite un hash fijo |
+| *Nuevo:* CSP `script-src 'unsafe-inline'` (Media) | Riesgo aceptado | TanStack Start hidrata con scripts en línea. Mejora planificada: nonce por respuesta en `server.ts` |
+| *Nuevo:* CSP `style-src 'unsafe-inline'` (Media) | Riesgo aceptado | Estilos en línea de Tailwind/Radix y de Leaflet |
+| *Nuevo:* CSP con comodín en `img-src` (Media) | Riesgo aceptado | `img-src https:` cubre fotos de Cloudinary, Google y mosaicos de OpenStreetMap. Mejora: listar esos dominios |
+| COEP / COOP / CORP ausentes (Baja) | Se mantiene | COEP rompería Google, pagos y Cloudinary. COOP `same-origin-allow-popups` y CORP `same-origin` se pueden agregar en `vercel.json` tras probar el login con Google |
+| Permissions-Policy en `/assets/*.js` (Baja) | Falso positivo | La política aplica a documentos HTML y ya la envían todas las páginas; en archivos JS no tiene efecto |
+
 ## 4. Pruebas del plan de auditoría (backend)
 
 Pruebas automáticas que corren en cada push (*Backend - pruebas*); las de CORS también en el job *Control de acceso* del workflow de seguridad.
