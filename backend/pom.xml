@@ -277,6 +277,20 @@
                     </excludes>
                 </configuration>
             </plugin>
+
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>10.0.4</version>
+                <configuration>
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                    </formats>
+                <failBuildOnCVSS>9</failBuildOnCVSS>
+                </configuration>
+            </plugin>
+
         </plugins>
     </build>
 
