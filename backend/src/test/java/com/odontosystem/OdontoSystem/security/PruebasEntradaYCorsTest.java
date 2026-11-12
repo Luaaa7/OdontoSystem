@@ -1,82 +1,32 @@
 package com.odontosystem.OdontoSystem.security;
 
-import com.odontosystem.OdontoSystem.dto.RegistroRequest;
-import com.odontosystem.OdontoSystem.exception.GlobalExceptionHandler;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockFilterChain;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.filter.ForwardedHeaderFilter;
 
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Pruebas de seguridad del plan de auditoría que no cubrían otras clases:
- * B9 (validación de entradas / asignación de rol), I1 (CORS) y B11 (IP tomada de X-Forwarded-For).
+ * Pruebas de seguridad del plan de auditoría: I1 (CORS) y B11 (IP tomada de X-Forwarded-For).
+ * B9 (registro con rol "ADMIN" o JSON roto → 400) se prueba con la aplicación real en BaseDeDatosIntegracionTest.
  */
 class PruebasEntradaYCorsTest {
-
-    /** B9: el registro no acepta un rol que no existe y un JSON roto no termina en 500. */
-    @Nested
-    class ValidacionDeEntradas {
-
-        private MockMvc mvc;
-
-        @BeforeEach
-        void setUp() {
-            mvc = MockMvcBuilders.standaloneSetup(new RegistroDePrueba())
-                    .setControllerAdvice(new GlobalExceptionHandler())
-                    .build();
-        }
-
-        @Test
-        @DisplayName("B9: registrarse con rol \"ADMIN\" → 400 (no existe ese rol) y sin detalles internos")
-        void rolInexistente() throws Exception {
-            mvc.perform(post("/prueba/registro").contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"correo\":\"x@prueba.pe\",\"rol\":\"ADMIN\"}"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.status").value(400))
-                    .andExpect(content().string(not(containsString("RolUsuario"))))
-                    .andExpect(content().string(not(containsString("jackson"))));
-        }
-
-        @Test
-        @DisplayName("B9: JSON mal formado → 400, no 500")
-        void jsonRoto() throws Exception {
-            mvc.perform(post("/prueba/registro").contentType(MediaType.APPLICATION_JSON).content("{\"rol\":"))
-                    .andExpect(status().isBadRequest());
-        }
-
-        @Test
-        @DisplayName("B9: campos vacíos o fuera de rango → 400 con el campo que falla")
-        void camposInvalidos() throws Exception {
-            mvc.perform(post("/prueba/registro").contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"rol\":\"PACIENTE\",\"password\":\"123\"}"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.mensaje").value(containsString("password")));
-        }
-    }
 
     /** I1: solo los orígenes configurados (aquí http://localhost:5173) pueden llamar a la API desde un navegador. */
     @Nested
@@ -140,29 +90,14 @@ class PruebasEntradaYCorsTest {
         @Test
         @DisplayName("B11: la IP que ve el backend sale del primer valor de X-Forwarded-For")
         void ipDesdeXForwardedFor() throws Exception {
-            MockMvc mvc = MockMvcBuilders.standaloneSetup(new EcoIp())
-                    .addFilters(new ForwardedHeaderFilter())
-                    .build();
-            mvc.perform(get("/eco-ip").header("X-Forwarded-For", "203.0.113.7, 10.0.0.1"))
-                    .andExpect(content().string("203.0.113.7"));
-        }
-    }
+            MockHttpServletRequest peticion = new MockHttpServletRequest("POST", "/api/auth/login");
+            peticion.setRemoteAddr("10.0.0.1"); // el proxy
+            peticion.addHeader("X-Forwarded-For", "203.0.113.7, 10.0.0.1");
+            MockFilterChain cadena = new MockFilterChain();
 
-    // Sin @RestController a propósito: así Spring no lo registra al levantar la aplicación completa
-    // (BaseDeDatosIntegracionTest) y no choca con AuthController. Solo lo usa el MockMvc "standalone".
-    @ResponseBody
-    static class RegistroDePrueba {
-        @PostMapping("/prueba/registro")
-        String registrar(@Valid @RequestBody RegistroRequest request) {
-            return "ok";
-        }
-    }
+            new ForwardedHeaderFilter().doFilter(peticion, new MockHttpServletResponse(), cadena);
 
-    @ResponseBody
-    static class EcoIp {
-        @GetMapping("/eco-ip")
-        String ip(HttpServletRequest request) {
-            return request.getRemoteAddr();
+            assertThat(((HttpServletRequest) cadena.getRequest()).getRemoteAddr()).isEqualTo("203.0.113.7");
         }
     }
 }

@@ -16,6 +16,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -37,6 +41,13 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Pruebas de integración contra un PostgreSQL 17 + PostGIS REAL (Docker, Testcontainers): se aplican las migraciones
@@ -117,6 +128,7 @@ class BaseDeDatosIntegracionTest {
     @Autowired private VerificacionCorreoService verificacionCorreo;
     @Autowired private EliminacionCuentaService eliminacionCuenta;
     @Autowired private UsuarioRepository usuarios;
+    @Autowired private WebApplicationContext contextoWeb;
 
     // ------------------------------------------------------------------ datos de prueba
 
@@ -310,5 +322,39 @@ class BaseDeDatosIntegracionTest {
                 Boolean.class, paciente)).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM otp_verificaciones WHERE usuario_id = ? AND consumido_en IS NOT NULL",
                 Integer.class, paciente)).isEqualTo(1);
+    }
+
+    // ------------------------------------------------------------------ B9: validación de entradas (app real)
+
+    /** La API completa (seguridad, Jackson con snake_case y GlobalExceptionHandler reales), sin servidor. */
+    private MockMvc api() {
+        return MockMvcBuilders.webAppContextSetup(contextoWeb).apply(springSecurity()).build();
+    }
+
+    @Test
+    @DisplayName("B9: registrarse con rol \"ADMIN\" → 400 y sin detalles internos (antes 500)")
+    void registroConRolInexistente() throws Exception {
+        api().perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"correo\":\"b9@odontosystem.test\",\"rol\":\"ADMIN\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(content().string(not(containsString("RolUsuario"))))
+                .andExpect(content().string(not(containsString("jackson"))));
+    }
+
+    @Test
+    @DisplayName("B9: JSON mal formado en el registro → 400, no 500")
+    void registroConJsonRoto() throws Exception {
+        api().perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("{\"rol\":"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("B9: campos vacíos o fuera de rango en el registro → 400 indicando el campo")
+    void registroConCamposInvalidos() throws Exception {
+        api().perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rol\":\"PACIENTE\",\"password\":\"123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.mensaje").value(containsString("password")));
     }
 }
