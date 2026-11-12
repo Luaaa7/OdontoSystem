@@ -127,7 +127,7 @@ class DisponibilidadServiceTest {
     @Test
     @DisplayName("Fecha pasada o a más de 60 días → 400; odontólogo no verificado → 404")
     void validaFechaYPerfil() {
-        when(perfilRepository.findById(odontologoId)).thenReturn(Optional.of(perfil));
+        when(perfilRepository.buscarConUsuario(odontologoId)).thenReturn(Optional.of(perfil));
         when(servicioRepository.findByIdAndOdontologo_UsuarioId(limpieza.getId(), odontologoId)).thenReturn(Optional.of(limpieza));
         assertThatThrownBy(() -> servicio.disponibilidad(odontologoId, limpieza.getId(), LUNES.minusDays(1)))
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode().value()).isEqualTo(400));

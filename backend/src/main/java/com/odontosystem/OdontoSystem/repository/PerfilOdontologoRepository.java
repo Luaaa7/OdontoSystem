@@ -26,4 +26,8 @@ public interface PerfilOdontologoRepository extends JpaRepository<PerfilOdontolo
             + "where p.desactivadoEn is null and u.estaActivo = true and p.estadoVerificacion = :estado "
             + "and (p.suspendidoHasta is null or p.suspendidoHasta < current_timestamp)")
     List<PerfilOdontologo> buscarPublicables(@Param("estado") EstadoVerificacionOdontologo estado);
+
+    /** El perfil con su usuario en UNA consulta (findById + getUsuario() eran dos idas a la BD; DEF-05). */
+    @Query("select p from PerfilOdontologo p join fetch p.usuario where p.usuarioId = :id")
+    Optional<PerfilOdontologo> buscarConUsuario(@Param("id") UUID id);
 }
