@@ -7,7 +7,7 @@ Responde a la consigna de la fase de pruebas de seguridad: SAST/SCA, matriz de c
 | Parte | Herramienta | Cómo se corre | Evidencia |
 |---|---|---|---|
 | Backend (Java/Maven) | OSV-Scanner v2.6.0 (Google; base OSV que reúne GitHub Advisories y NVD) | Job *SCA - OSV-Scanner* del workflow | [`evidencias/osv-backend-antes.md`](evidencias/osv-backend-antes.md) y el resumen del job |
-| Backend (respaldo) | OWASP Dependency-Check 12.1.0 (plugin de Maven) | `cd backend && ./mvnw dependency-check:check` o el job *SCA - Dependency-Check* | Depende de la API del NVD, que el 05/11/2026 respondió 522/524 (caída); no bloquea el PR |
+| Backend (Dependency-Check) | OWASP Dependency-Check (plugin de Maven, con `backend/dependency-check-suppressions.xml`) | `cd backend && ./mvnw dependency-check:check` o el job *SCA - Dependency-Check* | Corrida de Sebastián Salas (11/11/2026): [`antes`](../security/dependency-check-report.html), [`después sin supresiones`](../security/dependency-check-DESPUES-sin-supresiones.html), [`después final`](../security/dependency-check-DESPUES-final.html). En CI depende de que la API del NVD responda (el 05/11 dio 522/524) |
 | Web (React) | `npm audit` | `npm audit --omit=dev` en el repo de la web | [`evidencias/npm-audit-web-antes.txt`](evidencias/npm-audit-web-antes.txt) |
 | App (Capacitor) | `npm audit` | `npm audit --omit=dev` en el repo de la app | [`evidencias/npm-audit-app-antes.txt`](evidencias/npm-audit-app-antes.txt) |
 
@@ -18,6 +18,14 @@ Resultado inicial del 05/11/2026 (solo librerías que llegan a producción, `--o
 | Web | 1 | 5 | 0 | 7 | `dompurify` (crítica) y versiones viejas de `vite`, `zod`, `undici`, `seroval` | `npm audit fix` y volver a probar la web |
 | App | 0 | 9 | 8 | 1 | El CLI `shadcn` está en `dependencies` y arrastra librerías de servidor (`@modelcontextprotocol/sdk`, `body-parser`, `systeminformation`) | Mover `shadcn` a `devDependencies` (es un generador de componentes, no se usa en la app) y `npm audit fix` |
 | Backend | 8 | 16 | 16 | 0 | 15 librerías: Tomcat embebido 11.0.22 (4 críticas), Spring WebMVC 7.0.8 (2 críticas), Netty 4.2.15 (1 crítica), Jackson 2 y 3, PostgreSQL, HttpClient5, Log4j, Guava 33.4.8 y jsoup 1.17.2 | Subir Spring Boot de 4.1.0 a **4.1.2** (trae Tomcat 11.0.27, Spring 7.0.10, Jackson 2.21.7/3.1.7, Netty 4.2.19, PostgreSQL 42.7.14, HttpClient5 5.6.5, HttpCore5 5.4.4, Log4j 2.25.5), Guava a **33.7.2-jre** y jsoup a **1.23.2** |
+
+Resultado de OWASP Dependency-Check en el backend (207 librerías analizadas):
+
+| Momento | Librerías vulnerables | Vulnerabilidades | Qué cambió |
+|---|---:|---:|---|
+| Antes | 18 | 151 | Spring Boot 4.1.0, springdoc 3.0.0, pdfbox 3.0.5 |
+| Después de actualizar | 4 | 8 | Spring Boot **4.1.2**, springdoc **3.2.0**, pdfbox **3.0.8** (más Guava y jsoup de la fila anterior) |
+| Después, con supresiones justificadas | 0 | 0 (8 suprimidas) | DOMPurify 3.4.16 dentro de swagger-ui: riesgo aceptado hasta el 31/12/2026 (CVSS 6.1, Swagger apagado en producción con `SWAGGER_ENABLED=false`); `angus-activation` y `hibernate-validator`: falsos positivos por CPE genérico |
 
 Después de corregir se guardan `npm-audit-web-despues.txt`, `npm-audit-app-despues.txt` y el nuevo resultado de OSV-Scanner del backend (`osv-backend-despues.md`) como evidencia.
 
@@ -92,3 +100,20 @@ Ruta atacada: `GET https://odontosystem-production.up.railway.app/api/odontologo
 | XSS reflejado en el parámetro `q` | No encontrada | La API responde JSON (`Content-Type: application/json`) con `X-Content-Type-Options: nosniff`, así que el navegador no interpreta la respuesta como HTML. |
 
 Ninguna alerta de la API apareció en el reporte: los 4 hallazgos medios y el bajo corresponden solo a la web de Vercel.
+
+## 4. Pruebas del plan de auditoría (backend)
+
+Pruebas automáticas que corren en cada push (*Backend - pruebas*); las de CORS también en el job *Control de acceso* del workflow de seguridad.
+
+| ID | Prueba | Resultado esperado | Dónde se prueba | Estado |
+|---|---|---|---|---|
+| B4 | IDOR: un usuario pide la cita, reembolso, reseña o notificación de otro | 404 (no revela que existe) | `CitaServiceTest`, `ReembolsoServiceTest`, `ResenaServiceTest`, `BandejaNotificacionesTest`, entre otras | Cumple |
+| B5 | JWT alterado, firmado con otra clave, vencido o de otro usuario | Rechazado | `JwtServiceTest` | Cumple |
+| B9 | Registro con `rol: "ADMIN"`, JSON mal formado o campos fuera de rango | 400 sin detalles internos | `BaseDeDatosIntegracionTest` (app real) | **Corregido**: antes respondía 500; se agregó el manejo de `HttpMessageNotReadableException` en `GlobalExceptionHandler` |
+| B10 | Archivo disfrazado (.html/.svg renombrado a .jpg) o de más de 5 MB | Rechazado | `ArchivoServiceTest` (valida el contenido real, no la extensión) | Cumple |
+| B11 | Fuerza bruta: 5 fallos por cuenta y 20 por IP | Bloqueo de 15 min (429) | `LimiteLoginServiceTest` | Cumple |
+| B11 | ¿Se puede falsear la IP con `X-Forwarded-For`? | — | `PruebasEntradaYCorsTest` | **Riesgo a confirmar**: Spring toma el primer valor de la cabecera; si el proxy de Railway no la reemplaza, el bloqueo por IP se podría saltar (el de 5 por cuenta sigue) |
+| B12 | Aviso de pago (webhook) falso o de una orden ajena | No confirma nada | `PagoServiceMercadoPagoTest` (el aviso se verifica consultando a Mercado Pago) | Cumple |
+| I1 | CORS desde `http://evil.com` o con una cabecera no permitida | 403 sin `Access-Control-Allow-Origin` | `PruebasEntradaYCorsTest` | Cumple |
+| I3 | Reusar un refresh token ya usado | 401 y se cierran todas las sesiones del usuario | `TokenRefrescoServiceTest` | Cumple |
+| I2 | Access token después de cerrar sesión | — | Revisión de código (`JwtService.isTokenValid`) | **Riesgo aceptado**: el access token sigue válido hasta su vencimiento (15 min); el refresh sí se revoca |
