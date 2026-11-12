@@ -152,7 +152,7 @@ jobs:
       - name: Probar la matriz de roles
         run: |
           chmod +x mvnw
-          ./mvnw -B -q test -Dtest=MatrizControlAccesoTest -Djacoco.skip=true
+          ./mvnw -B -q test "-Dtest=MatrizControlAccesoTest,PruebasEntradaYCorsTest*" -Djacoco.skip=true
 
       - name: Publicar la matriz
         if: always()

@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -60,6 +61,14 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .collect(Collectors.joining("; "));
         return construirRespuesta(HttpStatus.BAD_REQUEST, mensaje, request);
+    }
+
+    // JSON mal formado o un valor que no existe (p. ej. rol "ADMIN"): 400. Antes caía en el manejador
+    // general y respondía 500. No se devuelve el detalle de Jackson para no revelar clases internas.
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> manejarCuerpoIlegible(HttpMessageNotReadableException ex, HttpServletRequest request) {
+        return construirRespuesta(HttpStatus.BAD_REQUEST,
+                "El cuerpo de la petición no es válido (JSON mal formado o un valor no permitido)", request);
     }
 
     // Ruta que no existe: 404 (antes caia en el manejador general y respondia 500).
