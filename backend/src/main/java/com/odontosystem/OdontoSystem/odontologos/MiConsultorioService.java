@@ -1,6 +1,7 @@
 package com.odontosystem.OdontoSystem.odontologos;
 
 import com.odontosystem.OdontoSystem.citas.CitaService;
+import com.odontosystem.OdontoSystem.citas.DisponibilidadService;
 import com.odontosystem.OdontoSystem.entity.BloqueoAgenda;
 import com.odontosystem.OdontoSystem.entity.Cita;
 import com.odontosystem.OdontoSystem.entity.EstadoCita;
@@ -24,6 +25,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
@@ -51,6 +54,8 @@ public class MiConsultorioService {
     /** RF07: al bloquear, las citas ya reservadas en ese rango se cancelan con reembolso del 100 %. */
     private final CitaRepository citaRepository;
     private final CitaService citaService;
+    /** OBS-13: la disponibilidad pública guarda el horario 60 s; al cambiarlo hay que avisarle. */
+    private final DisponibilidadService disponibilidad;
 
     // ------------------------------------------------------------------
     // Servicios (RF04)
@@ -85,6 +90,7 @@ public class MiConsultorioService {
         servicio.setPrecioTotal(req.precioTotal());
         servicio.setDuracionMinutos(req.duracionMinutos());
         servicio.setEstaActivo(true);
+        refrescarDisponibilidad(odontologoId);
         return guardarYRecargar(servicio);
     }
 
@@ -94,6 +100,21 @@ public class MiConsultorioService {
         Servicio servicio = exigirServicio(odontologoId, servicioId);
         servicio.setEstaActivo(false);
         servicioRepository.save(servicio);
+        refrescarDisponibilidad(odontologoId);
+    }
+
+    /** Se descarta la copia de la disponibilidad recién al confirmar la transacción, para no volver a leer lo viejo. */
+    private void refrescarDisponibilidad(UUID odontologoId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    disponibilidad.olvidarConfiguracion(odontologoId);
+                }
+            });
+        } else {
+            disponibilidad.olvidarConfiguracion(odontologoId);
+        }
     }
 
     /** El depósito lo calcula un trigger de la BD (20 % configurable): se recarga para devolver el valor real. */
@@ -131,6 +152,7 @@ public class MiConsultorioService {
                         .build())
                 .toList();
         horarioRepository.saveAll(nuevos);
+        refrescarDisponibilidad(odontologoId);
         return listarHorarios(odontologoId);
     }
 

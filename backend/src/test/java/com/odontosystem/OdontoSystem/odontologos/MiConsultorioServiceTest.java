@@ -47,6 +47,7 @@ class MiConsultorioServiceTest {
     @Mock private com.odontosystem.OdontoSystem.repository.CitaRepository citaRepository;
     @Mock private com.odontosystem.OdontoSystem.citas.CitaService citaService;
     @Mock private EntityManager entityManager;
+    @Mock private com.odontosystem.OdontoSystem.citas.DisponibilidadService disponibilidad;
 
     private MiConsultorioService servicio;
     private final UUID odontologoId = UUID.randomUUID();
@@ -55,7 +56,7 @@ class MiConsultorioServiceTest {
     @BeforeEach
     void setUp() {
         servicio = new MiConsultorioService(perfilRepository, servicioRepository, categoriaRepository,
-                horarioRepository, bloqueoRepository, entityManager, citaRepository, citaService);
+                horarioRepository, bloqueoRepository, entityManager, citaRepository, citaService, disponibilidad);
     }
 
     private static int estado(Throwable e) {
@@ -81,6 +82,20 @@ class MiConsultorioServiceTest {
         assertThatThrownBy(() -> MiConsultorioService.validarHorarios(List.of(
                 new HorarioDto(DiaSemana.JUEVES, LocalTime.of(18, 0), LocalTime.of(9, 0), (short) 30))))
                 .satisfies(e -> assertThat(estado(e)).isEqualTo(400));
+    }
+
+    @Test
+    @DisplayName("OBS-13: guardar el horario o quitar un servicio descarta la copia de la disponibilidad (el paciente lo ve al instante)")
+    void cambiosRefrescanDisponibilidad() {
+        when(perfilRepository.findById(odontologoId)).thenReturn(Optional.of(perfil));
+        Servicio limpieza = Servicio.builder().id(UUID.randomUUID()).odontologo(perfil).estaActivo(true).build();
+        when(servicioRepository.findByIdAndOdontologo_UsuarioId(limpieza.getId(), odontologoId)).thenReturn(Optional.of(limpieza));
+
+        servicio.reemplazarHorarios(odontologoId, List.of(
+                new HorarioDto(DiaSemana.SABADO, LocalTime.of(9, 0), LocalTime.of(10, 0), (short) 30)));
+        servicio.desactivarServicio(odontologoId, limpieza.getId());
+
+        verify(disponibilidad, org.mockito.Mockito.times(2)).olvidarConfiguracion(odontologoId);
     }
 
     @Test

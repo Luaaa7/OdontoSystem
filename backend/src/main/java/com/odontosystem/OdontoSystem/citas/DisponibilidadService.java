@@ -101,6 +101,14 @@ public class DisponibilidadService {
         return nueva;
     }
 
+    /**
+     * OBS-13: cuando el odontólogo cambia su horario o un servicio, se descarta su copia para que los pacientes vean
+     * el cambio al instante y no hasta 60 s después.
+     */
+    public void olvidarConfiguracion(UUID odontologoId) {
+        configuraciones.keySet().removeIf(clave -> clave.odontologoId().equals(odontologoId));
+    }
+
     /** Lo usa también CitaService para comprobar que el turno pedido sigue libre. */
     List<Turno> turnosLibres(PerfilOdontologo perfil, Servicio servicio, LocalDate fecha) {
         return turnosLibres(perfil, servicio,
