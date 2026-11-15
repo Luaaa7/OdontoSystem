@@ -168,4 +168,17 @@ class DisponibilidadServiceTest {
         verify(horarioRepository, times(1)).findByOdontologo_UsuarioIdOrderByDiaSemanaAscHoraInicioAsc(odontologoId);
         verify(citaRepository, times(2)).cruzadas(eq(odontologoId), anyList(), any(), any());
     }
+
+    @Test
+    @DisplayName("OBS-13: tras olvidarConfiguracion la siguiente consulta vuelve a leer el horario de la BD")
+    void olvidarConfiguracion() {
+        when(perfilRepository.buscarConUsuario(odontologoId)).thenReturn(Optional.of(perfil));
+        when(servicioRepository.findByIdAndOdontologo_UsuarioId(limpieza.getId(), odontologoId)).thenReturn(Optional.of(limpieza));
+
+        servicio.disponibilidad(odontologoId, limpieza.getId(), LUNES.plusDays(1));
+        servicio.olvidarConfiguracion(odontologoId);
+        servicio.disponibilidad(odontologoId, limpieza.getId(), LUNES.plusDays(1));
+
+        verify(horarioRepository, times(2)).findByOdontologo_UsuarioIdOrderByDiaSemanaAscHoraInicioAsc(odontologoId);
+    }
 }
