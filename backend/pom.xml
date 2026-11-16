@@ -25,6 +25,13 @@
         <!-- Solo para VS Code/Eclipse: que el editor no corra Lombok como procesador (Maven no lo usa) -->
         <m2e.apt.activation>disabled</m2e.apt.activation>
         <start-class>com.odontosystem.OdontoSystem.OdontoSystemApplication</start-class>
+        <!-- SAST con SonarQube Cloud (plan Free). Lo corre GitHub Actions (backend.yml) con el secreto SONAR_TOKEN.
+             La cobertura la toma del XML de JaCoCo que genera ./mvnw test. -->
+        <sonar.organization>luaaa7</sonar.organization>
+        <sonar.projectKey>Luaaa7_OdontoSystem</sonar.projectKey>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <sonar.coverage.exclusions>**/entity/**,**/dto/**,**/OdontoSystemApplication.java</sonar.coverage.exclusions>
     </properties>
 
 
