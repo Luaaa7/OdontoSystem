@@ -16,12 +16,16 @@ on:
 jobs:
   pruebas:
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} # vacío en PR de forks: el análisis se salta
     defaults:
       run:
         working-directory: backend
     steps:
       - name: Descargar el codigo
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # SonarQube Cloud necesita el historial para saber qué código es nuevo
 
       - name: Instalar Java 21
         uses: actions/setup-java@v5
@@ -44,3 +48,9 @@ jobs:
         with:
           name: cobertura-jacoco
           path: backend/target/site/jacoco/
+
+      # SAST: analiza el código (bugs, vulnerabilidades, code smells, cobertura) y publica el
+      # resultado en sonarcloud.io/project/overview?id=Luaaa7_OdontoSystem. Usa lo ya compilado.
+      - name: Analisis estatico (SonarQube Cloud)
+        if: env.SONAR_TOKEN != ''
+        run: ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Djacoco.skip=true
