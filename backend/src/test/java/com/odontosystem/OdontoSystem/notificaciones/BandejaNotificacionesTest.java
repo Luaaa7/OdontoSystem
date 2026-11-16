@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -86,7 +87,7 @@ class BandejaNotificacionesTest {
     void registrarNoLanza() {
         when(repositorio.save(any())).thenThrow(new RuntimeException("BD caída"));
 
-        bandeja.registrar(usuario, "X", "Título", "Mensaje", null);
+        assertThatCode(() -> bandeja.registrar(usuario, "X", "Título", "Mensaje", null)).doesNotThrowAnyException();
     }
 
     @Test
