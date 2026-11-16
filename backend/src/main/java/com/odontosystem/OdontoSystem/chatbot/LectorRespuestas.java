@@ -49,6 +49,8 @@ final class LectorRespuestas {
     private static final List<String> MESES = List.of("enero", "febrero", "marzo", "abril", "mayo", "junio",
             "julio", "agosto", "setiembre", "octubre", "noviembre", "diciembre");
 
+    /** «mañana» como parte del día («en la mañana»), no como el día siguiente. find() evita el retroceso de ".*" (SonarQube S8786). */
+    private static final Pattern MANANA_PARTE_DEL_DIA = Pattern.compile(" (?:la|esta|por la|en la|de la) manana ");
     private static final Pattern NUMERO_SOLO =
             Pattern.compile("^(?:el |la |opcion |numero |nro |n )?(\\d{1,2})$");
     private static final Pattern FECHA_NUMERICA =
@@ -145,7 +147,7 @@ final class LectorRespuestas {
         if (conBordes.contains(" hoy ")) {
             return Optional.of(hoy);
         }
-        if (conBordes.contains(" manana ") && !conBordes.matches(".* (la|esta|por la|en la|de la) manana .*")) {
+        if (conBordes.contains(" manana ") && !MANANA_PARTE_DEL_DIA.matcher(conBordes).find()) {
             return Optional.of(hoy.plusDays(1));
         }
         for (Map.Entry<String, DayOfWeek> dia : DIAS.entrySet()) {

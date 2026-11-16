@@ -1,5 +1,6 @@
 package com.odontosystem.OdontoSystem.citas;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
@@ -25,6 +26,7 @@ public class PasarelaSimulada {
 
     private final byte[] llave;
 
+    @Autowired // el que usa Spring; el otro es solo para las pruebas (SonarQube S6829)
     public PasarelaSimulada() {
         this.llave = new byte[32];
         new SecureRandom().nextBytes(llave);
