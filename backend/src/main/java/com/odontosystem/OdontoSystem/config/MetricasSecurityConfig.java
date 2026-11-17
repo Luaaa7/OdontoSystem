@@ -35,8 +35,8 @@ public class MetricasSecurityConfig {
     public SecurityFilterChain cadenaMetricas(HttpSecurity http,
                                               @Value("${app.metricas.usuario:grafana}") String usuario,
                                               @Value("${app.metricas.password:}") String password) throws Exception {
+        // CSRF queda activo: solo afecta a POST/PUT/DELETE y Grafana solo hace GET (SonarQube S4502).
         http.securityMatcher(RUTA)
-                .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
