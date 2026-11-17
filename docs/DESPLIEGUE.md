@@ -14,7 +14,7 @@ flowchart LR
     WEB -->|REST + JWT| API
     APP -->|REST + JWT| API
     subgraph RW[Railway · US East · 1 réplica]
-        API[API Spring Boot<br/>OdontoSystem-9.0.0-SNAPSHOT.jar<br/>Java 21]
+        API[API Spring Boot<br/>OdontoSystem.jar<br/>Java 21]
     end
     API -->|JDBC + SSL<br/>pooler| DB[(PostgreSQL 17 + PostGIS<br/>Supabase · São Paulo)]
     API -->|TLS| R[(Redis<br/>Upstash)]
@@ -84,15 +84,17 @@ Las credenciales reales **nunca** se suben al repositorio (`.env` está en `.git
    ```
 4. **Compilar, probar y empaquetar**
    ```bash
-   ./mvnw clean package    # corre las pruebas y genera target/OdontoSystem-9.0.0-SNAPSHOT.jar
+   ./mvnw clean package    # corre las pruebas y genera target/OdontoSystem.jar (<finalName> del pom.xml)
    ```
+   `OdontoSystemApplicationTests` arranca la aplicación completa y necesita la base y Redis reales; sin ellas
+   (como en el CI) se excluye: `./mvnw clean package '-Dtest=!OdontoSystemApplicationTests' -Dsurefire.failIfNoSpecifiedTests=false`.
 5. **Migraciones de base de datos:** no hay un paso aparte. **Flyway** aplica al arrancar las migraciones
    pendientes (`src/main/resources/db/migration`, V1–V11) y Hibernate valida el esquema (`ddl-auto=validate`).
    Si una migración falla, la aplicación no arranca.
 6. **Iniciar el servicio**
    ```bash
    set -a && . ./.env && set +a                          # cargar las variables (Linux / Git Bash)
-   java -jar target/OdontoSystem-9.0.0-SNAPSHOT.jar      # API en http://localhost:8080
+   java -jar target/OdontoSystem.jar      # API en http://localhost:8080
    ```
    En un servidor Linux se deja como servicio con `systemd` (`ExecStart=/usr/bin/java -jar /opt/odontosystem/app.jar`).
 
