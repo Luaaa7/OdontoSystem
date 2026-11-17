@@ -140,6 +140,13 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Monitoreo (S16): /actuator/prometheus con métricas de la API (peticiones, tiempos, errores, JVM, pool de BD).
+             Lo lee Grafana Cloud con usuario y contraseña (MetricasSecurityConfig). Versión gestionada por Spring Boot. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
         <!-- Cloudinary: fotos de perfil, documentos y fotos del consultorio -->
         <dependency>
             <groupId>com.cloudinary</groupId>
