@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +16,7 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -32,7 +34,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Monitoreo (S16): /actuator/prometheus solo responde a las credenciales de Grafana, nunca a una cuenta de la app,
  * y queda cerrado si no se configuró una contraseña. Un controlador de prueba responde 200 en esa ruta:
  * si la petición llega, la seguridad la dejó pasar.
+ *
+ * {@code @ExtendWith} en la clase externa hace que Spring Boot la reconozca como prueba: así sus configuraciones internas
+ * (cadena y controlador de prueba) no se cargan en la app completa de BaseDeDatosIntegracionTest.
  */
+@ExtendWith(SpringExtension.class)
 class MetricasSecurityConfigTest {
 
     static final String CLAVE = "clave-de-prueba-larga-123";
