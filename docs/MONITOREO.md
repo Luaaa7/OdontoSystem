@@ -67,20 +67,34 @@ Evidencia: [`monitoreo/grafana-panel.png`](monitoreo/grafana-panel.png).
 | Despliegue fallido | Railway | la versión nueva no pasa el healthcheck | Correo de Railway; sigue la anterior |
 | Pruebas o seguridad en rojo | GitHub Actions | falla un workflow en `main` o en un PR | Correo de GitHub |
 | Respaldo semanal fallido | GitHub Actions (`backup-db.yml`) | falla la copia del domingo | Correo de GitHub |
-| Lentitud, errores 5xx, memoria o CPU | Panel de Grafana | umbrales de la sección 1 (colores y líneas rojas) | Revisión del panel |
+| **API lenta** | Grafana Alerting (`API lenta (p95 ≥ 2 s)`) | p95 de la API ≥ 2 s durante 5 min (evaluada cada 1 min) | Correo al Gmail del proyecto |
+| **Errores del servidor** | Grafana Alerting (`Errores 5xx (≥ 1 %)`) | ≥ 1 % de respuestas 5xx durante 5 min | Correo al Gmail del proyecto |
+| Memoria o CPU altas | Panel de Grafana | umbrales de la sección 1 (colores y líneas rojas) | Revisión del panel |
+
+Las dos reglas de Grafana están en la carpeta `OdontoSystem`, grupo `api`. Sin tráfico (por ejemplo, de madrugada)
+quedan en **OK** («no data → Normal») para no mandar avisos falsos; si Grafana no puede leer la API, pasan a **Error**.
+Los correos van al Gmail de OdontoSystem (contact point `Correo OdontoSystem`; Grafana Cloud solo envía a miembros de la
+organización, así que ese correo se invitó como *Viewer*).
 
 **Prueba de la alerta (16/11/2026):** se creó un monitor temporal contra una ruta inexistente (`/ruta-que-no-existe`,
 responde 401). UptimeRobot lo marcó **Down** y el correo «Monitor is DOWN» llegó en ~2 min con la causa (HTTP 401), la URL y la
 hora (19:43:26). Luego se eliminó el monitor. Evidencias: [`uptimerobot-alerta-correo.png`](monitoreo/uptimerobot-alerta-correo.png),
 [`uptimerobot-panel.png`](monitoreo/uptimerobot-panel.png), [`uptimerobot-pagina-estado.png`](monitoreo/uptimerobot-pagina-estado.png).
 
+**Prueba de las alertas de Grafana (19/11/2026):** se creó una regla temporal con la misma consulta del p95 y un umbral
+imposible de no cumplir (> 0,001 s). Pasó a **Firing** y a las 00:53 llegó el correo «[FIRING:1] Prueba de alerta Grafana»
+con el valor medido (p95 = 0,70 s); al cambiar el umbral a 2 s llegó «[RESOLVED]» a la 01:03. Esa regla quedó convertida en
+`API lenta (p95 ≥ 2 s)` y se creó `Errores 5xx (≥ 1 %)`; ambas en Normal (p95 0,24 s, 0 % de errores). Evidencias:
+[`grafana-alerta-correo.png`](monitoreo/grafana-alerta-correo.png), [`grafana-alerta-resuelta.png`](monitoreo/grafana-alerta-resuelta.png),
+[`grafana-regla-api-lenta.png`](monitoreo/grafana-regla-api-lenta.png), [`grafana-regla-5xx.png`](monitoreo/grafana-regla-5xx.png).
+
 ## 5. Qué hacer ante cada alerta
 
 | Situación | Pasos |
 |---|---|
 | **API caída** (correo de UptimeRobot) | 1) Railway → Deployments: ¿el último despliegue falló o se reinicia? 2) View logs: buscar `ERROR` a esa hora. 3) Si empezó con un despliegue → **rollback** (Deployments → History → versión estable → Redeploy). 4) Si es la base o Redis, revisar Supabase/Upstash. |
-| **Lentitud** (p95 ≥ 2 s) | 1) Panel «p95 por endpoint»: ¿qué ruta? 2) «Conexiones a la base»: ¿hay en espera? → subir `DB_POOL_MAX`. 3) CPU/memoria altas → escalar el servicio en Railway. 4) Si es un endpoint puntual, revisar la consulta (como DEF-05). |
-| **Errores 5xx** (≥ 1 %) | 1) Panel «Respuestas por código» y «por endpoint». 2) Logs de Railway con la traza. 3) Abrir un defecto, corregir en rama + PR; si es grave, rollback mientras tanto. |
+| **Lentitud** (correo «API lenta» o p95 ≥ 2 s en el panel) | 1) Panel «p95 por endpoint»: ¿qué ruta? 2) «Conexiones a la base»: ¿hay en espera? → subir `DB_POOL_MAX`. 3) CPU/memoria altas → escalar el servicio en Railway. 4) Si es un endpoint puntual, revisar la consulta (como DEF-05). |
+| **Errores 5xx** (correo «Errores 5xx» o ≥ 1 % en el panel) | 1) Panel «Respuestas por código» y «por endpoint». 2) Logs de Railway con la traza. 3) Abrir un defecto, corregir en rama + PR; si es grave, rollback mientras tanto. |
 | **Memoria JVM ≥ 90 %** | Revisar si sube sin bajar (fuga) en «Memoria JVM»; reiniciar el servicio y, si se repite, subir `-Xmx` o el plan. |
 | **Web caída** | Vercel → Deployments del portal (responsable: Nicole de la Cruz). |
 
@@ -92,3 +106,7 @@ hora (19:43:26). Luego se eliminó el monitor. Evidencias: [`uptimerobot-alerta-
    `https://odontosystem-production.up.railway.app/actuator/prometheus`, autenticación Basic, cada 1 min.
 3. **Panel:** Dashboards → New → Import → [`monitoreo/grafana-odontosystem.json`](monitoreo/grafana-odontosystem.json) → origen de datos `…-prom`.
 4. **UptimeRobot:** monitores HTTP(s) de la API (`/actuator/health`) y de la web, cada 5 min, alerta por correo; página de estado con ambos.
+5. **Alertas de Grafana:** invitar el Gmail del proyecto a la organización (Viewer) → contact point `Correo OdontoSystem` (Email) →
+   reglas en Alerting → Alert rules, carpeta `OdontoSystem`, grupo `api` (1 min), pending 5 min, no data → Normal:
+   - p95: `histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{uri!="/actuator/prometheus"}[5m])))` > 2
+   - 5xx: `100 * (sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) or vector(0)) / sum(rate(http_server_requests_seconds_count[5m]))` > 1
